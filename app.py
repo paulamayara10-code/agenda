@@ -8,10 +8,6 @@ import pandas as pd
 import streamlit as st
 
 
-# ============================================================
-# CONFIGURAÇÃO
-# ============================================================
-
 st.set_page_config(
     page_title="Agenda Operacional",
     page_icon="✅",
@@ -40,29 +36,17 @@ ABAS = {
 }
 
 
-# ============================================================
-# CSS
-# ============================================================
-
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0f172a 0%, #111827 60%, #020617 100%);
 }
 
-section[data-testid="stSidebar"] * {
-    color: #f8fafc !important;
-}
-
-div[data-testid="stSidebarContent"] {
-    padding-top: 1.2rem;
-}
+section[data-testid="stSidebar"] * { color: #f8fafc !important; }
 
 .main-title {
     font-size: 34px;
@@ -86,22 +70,9 @@ div[data-testid="stSidebarContent"] {
     min-height: 135px;
 }
 
-.metric-label {
-    color: #334155;
-    font-size: 15px;
-    font-weight: 700;
-}
-
-.metric-value {
-    font-size: 36px;
-    font-weight: 800;
-    margin-top: 8px;
-}
-
-.metric-detail {
-    font-size: 13px;
-    margin-top: 4px;
-}
+.metric-label { color: #334155; font-size: 15px; font-weight: 700; }
+.metric-value { font-size: 36px; font-weight: 800; margin-top: 8px; }
+.metric-detail { font-size: 13px; margin-top: 4px; }
 
 .panel {
     background: white;
@@ -128,17 +99,8 @@ div[data-testid="stSidebarContent"] {
     margin-bottom: 18px;
 }
 
-.task-title {
-    font-size: 18px;
-    font-weight: 800;
-    color: #111827;
-}
-
-.task-desc {
-    color: #64748b;
-    font-size: 14px;
-    margin-top: 6px;
-}
+.task-title { font-size: 18px; font-weight: 800; color: #111827; }
+.task-desc { color: #64748b; font-size: 14px; margin-top: 6px; }
 
 .tag {
     display: inline-block;
@@ -168,27 +130,21 @@ div[data-testid="stSidebarContent"] {
     border-color: #7c3aed;
     color: #7c3aed;
 }
-
-.footer-box {
-    background: #eef2ff;
-    color: #3730a3;
-    border: 1px solid #c7d2fe;
-    border-radius: 18px;
-    padding: 16px 20px;
-    margin-top: 20px;
-}
 </style>
 """, unsafe_allow_html=True)
 
-
-# ============================================================
-# FUNÇÕES AUXILIARES
-# ============================================================
 
 def txt(v):
     if pd.isna(v):
         return ""
     return str(v).strip()
+
+
+def limpar_colunas(df):
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.loc[:, ~pd.Index(df.columns).duplicated(keep="first")]
+    return df.reset_index(drop=True)
 
 
 def is_active(v):
@@ -217,11 +173,11 @@ def next_id(df, col):
 
 
 def ensure_cols(df, cols):
-    df = df.copy()
+    df = limpar_colunas(df)
     for c in cols:
         if c not in df.columns:
             df[c] = ""
-    return df[cols]
+    return df[cols].reset_index(drop=True)
 
 
 def unique_key(*parts):
@@ -285,28 +241,15 @@ def belongs_to_user(row, user):
 
     partes = resp.replace("/", ",").replace(";", ",").replace("|", ",").split(",")
     nomes = [x.strip().lower() for x in partes if x.strip()]
-
     return u in nomes or u in resp
 
 
 def get_departamentos(data):
     tarefas = data.get("Tarefas", pd.DataFrame())
-
     if tarefas.empty or "Departamento" not in tarefas.columns:
         return []
+    return sorted([txt(x) for x in tarefas["Departamento"].dropna().unique() if txt(x)])
 
-    departamentos = sorted([
-        txt(x)
-        for x in tarefas["Departamento"].dropna().unique()
-        if txt(x)
-    ])
-
-    return departamentos
-
-
-# ============================================================
-# DADOS
-# ============================================================
 
 @st.cache_data(show_spinner=False)
 def load_data(path):
@@ -325,7 +268,6 @@ def load_data(path):
             df = pd.read_excel(path, sheet_name=aba)
         else:
             df = pd.DataFrame(columns=cols)
-
         data[aba] = ensure_cols(df, cols)
 
     return data
@@ -333,12 +275,10 @@ def load_data(path):
 
 def save_data(path, data):
     path = Path(path)
-
     with pd.ExcelWriter(path, engine="openpyxl", mode="w") as writer:
         for aba, cols in ABAS.items():
             df = ensure_cols(data.get(aba, pd.DataFrame(columns=cols)), cols)
             df.to_excel(writer, sheet_name=aba, index=False)
-
     st.cache_data.clear()
 
 
@@ -348,9 +288,48 @@ def get_path():
     return st.session_state["excel_path"]
 
 
-# ============================================================
-# COMPONENTES VISUAIS
-# ============================================================
+def atualizar_status_tarefa(data, id_tarefa, novo_status, usuario=""):
+    tarefas = ensure_cols(data["Tarefas"], ABAS["Tarefas"])
+
+    ids = tarefas["ID"].astype(str).str.strip()
+    alvo = ids == str(id_tarefa).strip()
+
+    if not alvo.any():
+        return False
+
+    idx = tarefas.index[alvo][0]
+
+    tarefas.loc[idx, "Status"] = novo_status
+
+    if novo_status == "Concluída":
+        tarefas.loc[idx, "Concluído Por"] = usuario
+        tarefas.loc[idx, "Data Conclusão"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    else:
+        tarefas.loc[idx, "Concluído Por"] = ""
+        tarefas.loc[idx, "Data Conclusão"] = ""
+
+    data["Tarefas"] = tarefas
+    return True
+
+
+def registrar_historico(data, id_tarefa, tarefa, usuario, status="Concluída", observacao=""):
+    hist = ensure_cols(data["Historico"], ABAS["Historico"])
+    now = datetime.now()
+
+    novo = {
+        "ID Histórico": next_id(hist, "ID Histórico"),
+        "ID Tarefa": id_tarefa,
+        "Tarefa": tarefa,
+        "Usuário": usuario,
+        "Data": now.strftime("%d/%m/%Y"),
+        "Hora": now.strftime("%H:%M:%S"),
+        "Status": status,
+        "Observação": observacao,
+    }
+
+    data["Historico"] = pd.concat([hist, pd.DataFrame([novo])], ignore_index=True)
+    return data
+
 
 def header(title, subtitle):
     col1, col2 = st.columns([4, 1.5])
@@ -408,7 +387,6 @@ def sidebar(data):
     st.sidebar.divider()
 
     departamentos = get_departamentos(data)
-
     menu = ["Dashboard", "Minhas tarefas"] + departamentos + [
         "Projetos",
         "Calendário",
@@ -419,27 +397,22 @@ def sidebar(data):
     page = st.sidebar.radio("Navegação", menu)
 
     st.sidebar.divider()
-
     if st.sidebar.button("🔄 Atualizar dados"):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 1.3.0")
-
+    st.sidebar.caption("Versão 1.4.0")
     return user, page, departamentos
 
 
 def prepared_tasks(data):
-    tarefas = data["Tarefas"].copy()
-    tarefas = tarefas[tarefas["Ativa"].apply(is_active)]
+    tarefas = ensure_cols(data["Tarefas"], ABAS["Tarefas"])
+    tarefas = tarefas[tarefas["Ativa"].apply(is_active)].reset_index(drop=True)
     tarefas["Classificacao"] = tarefas.apply(classify, axis=1)
     return tarefas
 
 
 def task_card(row, data, user, prefix):
-    tarefas = data["Tarefas"].copy()
-    hist = data["Historico"].copy()
-
     idt = txt(row.get("ID"))
     titulo = txt(row.get("Tarefa"))
     desc = txt(row.get("Descrição"))
@@ -463,7 +436,6 @@ def task_card(row, data, user, prefix):
                 st.markdown(f"<div class='task-desc'>{desc}</div>", unsafe_allow_html=True)
 
             tags = f"<span class='tag {tag_status}'>{status}</span>"
-
             if minha:
                 tags += "<span class='tag tag-purple'>Minha tarefa</span>"
             if depto:
@@ -483,57 +455,24 @@ def task_card(row, data, user, prefix):
                 st.success("✅ Concluída")
 
                 if st.button("Reabrir", key=f"reopen_{chave_base}"):
-                    idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == str(idt).strip()].tolist()
-
-                    if idxs:
-                        i = idxs[0]
-                        tarefas.at[i, "Status"] = "Pendente"
-                        tarefas.at[i, "Concluído Por"] = ""
-                        tarefas.at[i, "Data Conclusão"] = ""
-
-                        data["Tarefas"] = tarefas
+                    ok = atualizar_status_tarefa(data, idt, "Pendente", user)
+                    if ok:
+                        registrar_historico(data, idt, titulo, user, "Reaberta")
                         save_data(get_path(), data)
                         st.rerun()
+                    else:
+                        st.error("Tarefa não localizada no Excel.")
             else:
                 if st.button("✅ Concluir", key=f"done_{chave_base}"):
-                    idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == str(idt).strip()].tolist()
-
-                    if not idxs:
+                    ok = atualizar_status_tarefa(data, idt, "Concluída", user)
+                    if ok:
+                        registrar_historico(data, idt, titulo, user, "Concluída")
+                        save_data(get_path(), data)
+                        st.success("Tarefa concluída.")
+                        st.rerun()
+                    else:
                         st.error("Tarefa não localizada no Excel.")
-                        return
 
-                    now = datetime.now()
-                    i = idxs[0]
-
-                    tarefas.at[i, "Status"] = "Concluída"
-                    tarefas.at[i, "Concluído Por"] = user
-                    tarefas.at[i, "Data Conclusão"] = now.strftime("%d/%m/%Y %H:%M:%S")
-
-                    novo = {
-                        "ID Histórico": next_id(hist, "ID Histórico"),
-                        "ID Tarefa": idt,
-                        "Tarefa": titulo,
-                        "Usuário": user,
-                        "Data": now.strftime("%d/%m/%Y"),
-                        "Hora": now.strftime("%H:%M:%S"),
-                        "Status": "Concluída",
-                        "Observação": "",
-                    }
-
-                    hist = pd.concat([hist, pd.DataFrame([novo])], ignore_index=True)
-
-                    data["Tarefas"] = tarefas
-                    data["Historico"] = hist
-
-                    save_data(get_path(), data)
-
-                    st.success("Tarefa concluída.")
-                    st.rerun()
-
-
-# ============================================================
-# PÁGINAS
-# ============================================================
 
 def dashboard(data, user):
     header("Dashboard", "Visão geral das atividades")
@@ -799,7 +738,7 @@ def calendario_page(data, user):
 def historico_page(data):
     header("Histórico", "Registro das conclusões")
 
-    hist = data["Historico"].copy()
+    hist = ensure_cols(data["Historico"], ABAS["Historico"])
 
     if hist.empty:
         st.info("Ainda não há histórico.")
@@ -808,10 +747,6 @@ def historico_page(data):
         hist = hist.sort_values("ID Histórico Ordenacao", ascending=False).drop(columns=["ID Histórico Ordenacao"])
         st.dataframe(hist, use_container_width=True, hide_index=True)
 
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
     data = load_data(get_path())
