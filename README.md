@@ -1,11 +1,8 @@
-# Agenda Operacional V4
+# Agenda Operacional V5
 
-Correções:
-- Gravação de conclusão mais segura.
-- Limpeza de colunas duplicadas/ocultas vindas do Excel.
-- Correção reforçada do erro ao alterar Status.
-- Menu automático por departamento.
-- Destaque de tarefas do usuário logado.
+Correção principal:
+- Resolve erro: Invalid value 'Concluída' for dtype ...
+- O app agora lê o Excel com dtype=object e força colunas em object antes de alterar Status.
 
 Como usar:
 1. Coloque Agenda.xlsx na mesma pasta do app.py.
