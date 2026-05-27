@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
 from datetime import datetime, date, time
+import hashlib
+
 import pandas as pd
 import streamlit as st
+
 
 # ============================================================
 # CONFIGURAÇÃO
@@ -35,6 +38,7 @@ ABAS = {
     "Calendario": ["Data", "ID Tarefa", "Departamento", "Status", "Prioridade"],
     "Configuracoes": ["Tipo", "Valor", "Ativo"],
 }
+
 
 # ============================================================
 # CSS
@@ -108,13 +112,6 @@ div[data-testid="stSidebarContent"] {
     margin-top: 18px;
 }
 
-.panel-title {
-    font-size: 22px;
-    font-weight: 800;
-    color: #111827;
-    margin-bottom: 18px;
-}
-
 .highlight-panel {
     background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
     border: 1px solid #c7d2fe;
@@ -124,13 +121,11 @@ div[data-testid="stSidebarContent"] {
     margin-top: 18px;
 }
 
-.task-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 18px;
-    padding: 18px;
-    margin-bottom: 14px;
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+.panel-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #111827;
+    margin-bottom: 18px;
 }
 
 .task-title {
@@ -174,10 +169,6 @@ div[data-testid="stSidebarContent"] {
     color: #7c3aed;
 }
 
-input, textarea, select {
-    border-radius: 12px !important;
-}
-
 .footer-box {
     background: #eef2ff;
     color: #3730a3;
@@ -189,6 +180,7 @@ input, textarea, select {
 </style>
 """, unsafe_allow_html=True)
 
+
 # ============================================================
 # FUNÇÕES AUXILIARES
 # ============================================================
@@ -198,9 +190,11 @@ def txt(v):
         return ""
     return str(v).strip()
 
+
 def is_active(v):
     t = txt(v).lower()
     return t not in ["não", "nao", "n", "false", "0", "inativo", "inativa", "arquivada", "arquivado"]
+
 
 def parse_date(v):
     if pd.isna(v) or txt(v) == "":
@@ -210,8 +204,10 @@ def parse_date(v):
     except Exception:
         return None
 
+
 def done(row):
     return txt(row.get("Status")).lower() in ["concluída", "concluida", "feito", "finalizada"]
+
 
 def next_id(df, col):
     if df.empty or col not in df.columns:
@@ -219,12 +215,19 @@ def next_id(df, col):
     s = pd.to_numeric(df[col], errors="coerce").dropna()
     return int(s.max()) + 1 if not s.empty else 1
 
+
 def ensure_cols(df, cols):
     df = df.copy()
     for c in cols:
         if c not in df.columns:
             df[c] = ""
     return df[cols]
+
+
+def unique_key(*parts):
+    base = "|".join([str(p) for p in parts])
+    return hashlib.md5(base.encode("utf-8")).hexdigest()[:12]
+
 
 def classify(row):
     if done(row):
@@ -246,6 +249,7 @@ def classify(row):
         return "Pendente anterior"
 
     return "Hoje"
+
 
 def periodic_today(row):
     if done(row) or not is_active(row.get("Ativa", "Sim")):
@@ -271,17 +275,23 @@ def periodic_today(row):
 
     return True
 
+
 def belongs_to_user(row, user):
     resp = txt(row.get("Responsavel")).lower()
     u = txt(user).lower()
+
     if not resp or not u:
         return False
 
-    nomes = [x.strip().lower() for x in resp.replace("/", ",").replace(";", ",").split(",") if x.strip()]
+    partes = resp.replace("/", ",").replace(";", ",").replace("|", ",").split(",")
+    nomes = [x.strip().lower() for x in partes if x.strip()]
+
     return u in nomes or u in resp
+
 
 def get_departamentos(data):
     tarefas = data.get("Tarefas", pd.DataFrame())
+
     if tarefas.empty or "Departamento" not in tarefas.columns:
         return []
 
@@ -292,6 +302,7 @@ def get_departamentos(data):
     ])
 
     return departamentos
+
 
 # ============================================================
 # DADOS
@@ -308,26 +319,34 @@ def load_data(path):
         return data
 
     xls = pd.ExcelFile(path)
+
     for aba, cols in ABAS.items():
         if aba in xls.sheet_names:
             df = pd.read_excel(path, sheet_name=aba)
         else:
             df = pd.DataFrame(columns=cols)
+
         data[aba] = ensure_cols(df, cols)
 
     return data
 
+
 def save_data(path, data):
     path = Path(path)
+
     with pd.ExcelWriter(path, engine="openpyxl", mode="w") as writer:
         for aba, cols in ABAS.items():
-            ensure_cols(data.get(aba, pd.DataFrame(columns=cols)), cols).to_excel(writer, sheet_name=aba, index=False)
+            df = ensure_cols(data.get(aba, pd.DataFrame(columns=cols)), cols)
+            df.to_excel(writer, sheet_name=aba, index=False)
+
     st.cache_data.clear()
+
 
 def get_path():
     if "excel_path" not in st.session_state:
         st.session_state["excel_path"] = ARQUIVO_EXCEL
     return st.session_state["excel_path"]
+
 
 # ============================================================
 # COMPONENTES VISUAIS
@@ -335,9 +354,11 @@ def get_path():
 
 def header(title, subtitle):
     col1, col2 = st.columns([4, 1.5])
+
     with col1:
         st.markdown(f"<div class='main-title'>{title}</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='subtitle'>{subtitle}</div>", unsafe_allow_html=True)
+
     with col2:
         hoje = datetime.now()
         st.markdown(
@@ -352,6 +373,7 @@ def header(title, subtitle):
             unsafe_allow_html=True
         )
 
+
 def metric_card(label, value, detail, color):
     st.markdown(
         f"""
@@ -364,13 +386,21 @@ def metric_card(label, value, detail, color):
         unsafe_allow_html=True
     )
 
+
 def sidebar(data):
     st.sidebar.markdown("## ✅ Agenda\n### Operacional")
     st.sidebar.divider()
 
     usuarios = data["Usuarios"].copy()
-    nomes = usuarios[usuarios["Ativo"].apply(is_active)]["Nome"].dropna().astype(str).str.strip().tolist()
-    nomes = sorted([n for n in nomes if n]) or ["Paula"]
+
+    if not usuarios.empty and "Nome" in usuarios.columns:
+        nomes = usuarios[usuarios["Ativo"].apply(is_active)]["Nome"].dropna().astype(str).str.strip().tolist()
+        nomes = sorted([n for n in nomes if n])
+    else:
+        nomes = []
+
+    if not nomes:
+        nomes = ["Paula"]
 
     user = st.sidebar.selectbox("Usuário logado", nomes)
     st.sidebar.caption("Todos visualizam tudo. As tarefas do usuário logado aparecem em destaque.")
@@ -389,12 +419,15 @@ def sidebar(data):
     page = st.sidebar.radio("Navegação", menu)
 
     st.sidebar.divider()
+
     if st.sidebar.button("🔄 Atualizar dados"):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 1.2.0")
+    st.sidebar.caption("Versão 1.3.0")
+
     return user, page, departamentos
+
 
 def prepared_tasks(data):
     tarefas = data["Tarefas"].copy()
@@ -402,11 +435,12 @@ def prepared_tasks(data):
     tarefas["Classificacao"] = tarefas.apply(classify, axis=1)
     return tarefas
 
+
 def task_card(row, data, user, prefix):
     tarefas = data["Tarefas"].copy()
     hist = data["Historico"].copy()
 
-    idt = row.get("ID")
+    idt = txt(row.get("ID"))
     titulo = txt(row.get("Tarefa"))
     desc = txt(row.get("Descrição"))
     depto = txt(row.get("Departamento"))
@@ -419,16 +453,17 @@ def task_card(row, data, user, prefix):
 
     tag_status = "tag-green" if "Concluída" in status else "tag-red" if "anterior" in status else "tag-yellow"
 
-    with st.container():
-        st.markdown("<div class='task-card'>", unsafe_allow_html=True)
+    with st.container(border=True):
         c1, c2 = st.columns([4.8, 1.25])
 
         with c1:
             st.markdown(f"<div class='task-title'>{'⭐ ' if minha else ''}{titulo}</div>", unsafe_allow_html=True)
+
             if desc:
                 st.markdown(f"<div class='task-desc'>{desc}</div>", unsafe_allow_html=True)
 
             tags = f"<span class='tag {tag_status}'>{status}</span>"
+
             if minha:
                 tags += "<span class='tag tag-purple'>Minha tarefa</span>"
             if depto:
@@ -437,55 +472,64 @@ def task_card(row, data, user, prefix):
                 tags += f"<span class='tag tag-purple'>Projeto: {projeto}</span>"
             if prioridade:
                 tags += f"<span class='tag tag-yellow'>{prioridade}</span>"
-            st.markdown(tags, unsafe_allow_html=True)
 
+            st.markdown(tags, unsafe_allow_html=True)
             st.caption(f"Responsável: {resp or '-'} | Periodicidade: {periodicidade or '-'}")
 
         with c2:
+            chave_base = unique_key(prefix, idt, titulo, resp, depto)
+
             if done(row):
                 st.success("✅ Concluída")
-                if st.button("Reabrir", key=f"reopen_{prefix}_{idt}"):
-                    idxs = tarefas.index[tarefas["ID"].astype(str) == str(idt)].tolist()
+
+                if st.button("Reabrir", key=f"reopen_{chave_base}"):
+                    idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == str(idt).strip()].tolist()
+
                     if idxs:
                         i = idxs[0]
                         tarefas.at[i, "Status"] = "Pendente"
                         tarefas.at[i, "Concluído Por"] = ""
                         tarefas.at[i, "Data Conclusão"] = ""
+
                         data["Tarefas"] = tarefas
                         save_data(get_path(), data)
                         st.rerun()
             else:
-                if st.button("✅ Concluir", key=f"done_{prefix}_{idt}"):
-                    idxs = tarefas.index[tarefas["ID"].astype(str) == str(idt)].tolist()
+                if st.button("✅ Concluir", key=f"done_{chave_base}"):
+                    idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == str(idt).strip()].tolist()
+
                     if not idxs:
                         st.error("Tarefa não localizada no Excel.")
-                    else:
-                        now = datetime.now()
-                        i = idxs[0]
-                        tarefas.at[i, "Status"] = "Concluída"
-                        tarefas.at[i, "Concluído Por"] = user
-                        tarefas.at[i, "Data Conclusão"] = now.strftime("%d/%m/%Y %H:%M:%S")
+                        return
 
-                        novo = {
-                            "ID Histórico": next_id(hist, "ID Histórico"),
-                            "ID Tarefa": idt,
-                            "Tarefa": titulo,
-                            "Usuário": user,
-                            "Data": now.strftime("%d/%m/%Y"),
-                            "Hora": now.strftime("%H:%M:%S"),
-                            "Status": "Concluída",
-                            "Observação": "",
-                        }
+                    now = datetime.now()
+                    i = idxs[0]
 
-                        hist = pd.concat([hist, pd.DataFrame([novo])], ignore_index=True)
+                    tarefas.at[i, "Status"] = "Concluída"
+                    tarefas.at[i, "Concluído Por"] = user
+                    tarefas.at[i, "Data Conclusão"] = now.strftime("%d/%m/%Y %H:%M:%S")
 
-                        data["Tarefas"] = tarefas
-                        data["Historico"] = hist
-                        save_data(get_path(), data)
-                        st.success("Tarefa concluída.")
-                        st.rerun()
+                    novo = {
+                        "ID Histórico": next_id(hist, "ID Histórico"),
+                        "ID Tarefa": idt,
+                        "Tarefa": titulo,
+                        "Usuário": user,
+                        "Data": now.strftime("%d/%m/%Y"),
+                        "Hora": now.strftime("%H:%M:%S"),
+                        "Status": "Concluída",
+                        "Observação": "",
+                    }
 
-        st.markdown("</div>", unsafe_allow_html=True)
+                    hist = pd.concat([hist, pd.DataFrame([novo])], ignore_index=True)
+
+                    data["Tarefas"] = tarefas
+                    data["Historico"] = hist
+
+                    save_data(get_path(), data)
+
+                    st.success("Tarefa concluída.")
+                    st.rerun()
+
 
 # ============================================================
 # PÁGINAS
@@ -504,22 +548,30 @@ def dashboard(data, user):
     concl_hoje = tarefas[tarefas["Classificacao"] == "Concluída hoje"]
 
     c1, c2, c3, c4 = st.columns(4)
-    with c1: metric_card("⭐ Minhas pendentes", len(minhas_abertas), f"{user}", "#7c3aed")
-    with c2: metric_card("Tarefas de hoje", len(hoje), f"{len(hoje)} pendente(s)", "#f59e0b")
-    with c3: metric_card("Pendências anteriores", len(pend), "Atenção" if len(pend) else "Sem pendências", "#dc2626")
-    with c4: metric_card("Concluídas hoje", len(concl_hoje), f"{len(concl_hoje)} concluída(s)", "#16a34a")
+
+    with c1:
+        metric_card("⭐ Minhas pendentes", len(minhas_abertas), f"{user}", "#7c3aed")
+    with c2:
+        metric_card("Tarefas de hoje", len(hoje), f"{len(hoje)} pendente(s)", "#f59e0b")
+    with c3:
+        metric_card("Pendências anteriores", len(pend), "Atenção" if len(pend) else "Sem pendências", "#dc2626")
+    with c4:
+        metric_card("Concluídas hoje", len(concl_hoje), f"{len(concl_hoje)} concluída(s)", "#16a34a")
 
     st.markdown("<div class='highlight-panel'><div class='panel-title'>⭐ Minhas tarefas em destaque</div>", unsafe_allow_html=True)
+
     if minhas_abertas.empty:
         st.success("Você não possui tarefas pendentes no momento.")
     else:
         for _, row in minhas_abertas.iterrows():
             task_card(row, data, user, "minhas_dash")
+
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    f1, f2, f3, f4 = st.columns([2,1,1,1])
+    f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
+
     with f1:
         busca = st.text_input("🔎 Buscar tarefa", placeholder="Digite uma palavra...")
     with f2:
@@ -532,16 +584,20 @@ def dashboard(data, user):
         status = st.selectbox("Status", ["Todos", "Pendente anterior", "Hoje", "Concluída hoje", "Concluída", "Futura"])
 
     filtradas = tarefas.copy()
+
     if busca:
         b = busca.lower()
         filtradas = filtradas[
             filtradas["Tarefa"].astype(str).str.lower().str.contains(b, na=False) |
             filtradas["Descrição"].astype(str).str.lower().str.contains(b, na=False)
         ]
+
     if depto != "Todos":
         filtradas = filtradas[filtradas["Departamento"].astype(str) == depto]
+
     if resp != "Todos":
         filtradas = filtradas[filtradas["Responsavel"].astype(str) == resp]
+
     if status != "Todos":
         filtradas = filtradas[filtradas["Classificacao"] == status]
 
@@ -550,22 +606,27 @@ def dashboard(data, user):
     with colA:
         st.markdown("<div class='panel'><div class='panel-title'>🔴 Pendências anteriores</div>", unsafe_allow_html=True)
         lista = filtradas[filtradas["Classificacao"] == "Pendente anterior"]
+
         if lista.empty:
             st.success("Nenhuma pendência anterior.")
         else:
             for _, row in lista.iterrows():
                 task_card(row, data, user, "pend")
+
         st.markdown("</div>", unsafe_allow_html=True)
 
     with colB:
         st.markdown("<div class='panel'><div class='panel-title'>🟡 Agenda de hoje</div>", unsafe_allow_html=True)
         lista = filtradas[(filtradas.apply(periodic_today, axis=1)) & (~filtradas.apply(done, axis=1))]
+
         if lista.empty:
             st.info("Nenhuma tarefa pendente para hoje.")
         else:
             for _, row in lista.iterrows():
                 task_card(row, data, user, "hoje")
+
         st.markdown("</div>", unsafe_allow_html=True)
+
 
 def minhas_tarefas_page(data, user):
     header("Minhas tarefas", f"Atividades atribuídas a {user}")
@@ -573,14 +634,20 @@ def minhas_tarefas_page(data, user):
     tarefas = prepared_tasks(data)
     minhas = tarefas[tarefas.apply(lambda r: belongs_to_user(r, user), axis=1)]
 
+    abertas = minhas[~minhas.apply(done, axis=1)]
+    concluidas = minhas[minhas.apply(done, axis=1)]
+
     c1, c2, c3 = st.columns(3)
-    with c1: metric_card("Minhas abertas", len(minhas[~minhas.apply(done, axis=1)]), "Pendentes", "#7c3aed")
-    with c2: metric_card("Minhas concluídas", len(minhas[minhas.apply(done, axis=1)]), "Histórico visual", "#16a34a")
-    with c3: metric_card("Total atribuídas", len(minhas), "Todas", "#2563eb")
+
+    with c1:
+        metric_card("Minhas abertas", len(abertas), "Pendentes", "#7c3aed")
+    with c2:
+        metric_card("Minhas concluídas", len(concluidas), "Histórico visual", "#16a34a")
+    with c3:
+        metric_card("Total atribuídas", len(minhas), "Todas", "#2563eb")
 
     st.markdown("<div class='highlight-panel'><div class='panel-title'>⭐ Prioridade do usuário logado</div>", unsafe_allow_html=True)
 
-    abertas = minhas[~minhas.apply(done, axis=1)]
     if abertas.empty:
         st.success("Você não possui tarefas pendentes.")
     else:
@@ -590,14 +657,15 @@ def minhas_tarefas_page(data, user):
     st.markdown("</div>", unsafe_allow_html=True)
 
     with st.expander("Ver minhas tarefas concluídas"):
-        concluidas = minhas[minhas.apply(done, axis=1)]
         if concluidas.empty:
             st.info("Nenhuma tarefa concluída.")
         else:
             st.dataframe(concluidas, use_container_width=True, hide_index=True)
 
+
 def departamento_page(data, user, depto):
     header(depto, f"Tarefas do departamento {depto}")
+
     tarefas = prepared_tasks(data)
     tarefas = tarefas[tarefas["Departamento"].astype(str).str.lower().str.strip() == depto.lower()]
 
@@ -620,8 +688,10 @@ def departamento_page(data, user, depto):
         for _, row in tarefas.iterrows():
             task_card(row, data, user, f"depto_{depto}")
 
+
 def projetos_page(data, user):
     header("Projetos", "Acompanhamento dos projetos internos")
+
     projetos = data["Projetos"].copy()
     projetos = projetos[projetos["Ativo"].apply(is_active)] if not projetos.empty else projetos
 
@@ -632,15 +702,23 @@ def projetos_page(data, user):
     for _, row in projetos.iterrows():
         pct = pd.to_numeric(row.get("%"), errors="coerce")
         pct = 0 if pd.isna(pct) else float(pct)
+
         with st.container(border=True):
-            c1, c2 = st.columns([4,1])
+            c1, c2 = st.columns([4, 1])
+
             with c1:
                 st.markdown(f"### {txt(row.get('Projeto'))}")
                 st.write(txt(row.get("Objetivo")))
-                st.caption(f"Responsável: {txt(row.get('Responsavel')) or '-'} | Prazo: {txt(row.get('Prazo Final')) or '-'} | Status: {txt(row.get('Status')) or '-'}")
-                st.progress(min(max(pct/100, 0), 1))
+                st.caption(
+                    f"Responsável: {txt(row.get('Responsavel')) or '-'} | "
+                    f"Prazo: {txt(row.get('Prazo Final')) or '-'} | "
+                    f"Status: {txt(row.get('Status')) or '-'}"
+                )
+                st.progress(min(max(pct / 100, 0), 1))
+
             with c2:
                 st.metric("Concluído", f"{pct:.0f}%")
+
 
 def cadastro_page(data, user):
     header("Cadastro de tarefas", "Inclua novas atividades no sistema")
@@ -656,19 +734,22 @@ def cadastro_page(data, user):
 
     with st.form("nova_tarefa"):
         c1, c2 = st.columns(2)
+
         with c1:
             tarefa = st.text_input("Tarefa")
             desc = st.text_area("Descrição")
             depto = st.selectbox("Departamento", deptos)
             projeto = st.selectbox("Projeto", projetos_l)
             resp = st.selectbox("Responsável", responsaveis)
+
         with c2:
             per = st.selectbox("Periodicidade", ["Diario", "Semanal", "Mensal", "Unica"])
             obrig = st.selectbox("Obrigatória", ["Não", "Sim"])
             prio = st.selectbox("Prioridade", ["Normal", "Alta", "Crítica", "Baixa"])
             dep = st.selectbox("Dependência", tarefas_l)
             data_ini = st.date_input("Data de início", value=date.today())
-            prazo = st.time_input("Prazo limite", value=time(18,0))
+            prazo = st.time_input("Prazo limite", value=time(18, 0))
+
         obs = st.text_area("Observação")
         ok = st.form_submit_button("Salvar tarefa")
 
@@ -695,15 +776,18 @@ def cadastro_page(data, user):
                 "Observação": obs,
                 "Ativa": "Sim",
             }
+
             data["Tarefas"] = pd.concat([tarefas, pd.DataFrame([novo])], ignore_index=True)
             save_data(get_path(), data)
             st.success("Tarefa cadastrada.")
             st.rerun()
 
+
 def calendario_page(data, user):
     header("Calendário", "Visão operacional por data")
+
     tarefas = prepared_tasks(data)
-    ref = st.date_input("Data", value=date.today())
+    st.date_input("Data", value=date.today())
 
     st.dataframe(
         tarefas[["ID", "Tarefa", "Departamento", "Responsavel", "Periodicidade", "Prioridade", "Status", "Data de Inicio"]],
@@ -711,13 +795,19 @@ def calendario_page(data, user):
         hide_index=True
     )
 
+
 def historico_page(data):
     header("Histórico", "Registro das conclusões")
+
     hist = data["Historico"].copy()
+
     if hist.empty:
         st.info("Ainda não há histórico.")
     else:
-        st.dataframe(hist.sort_values("ID Histórico", ascending=False), use_container_width=True, hide_index=True)
+        hist["ID Histórico Ordenacao"] = pd.to_numeric(hist["ID Histórico"], errors="coerce")
+        hist = hist.sort_values("ID Histórico Ordenacao", ascending=False).drop(columns=["ID Histórico Ordenacao"])
+        st.dataframe(hist, use_container_width=True, hide_index=True)
+
 
 # ============================================================
 # MAIN
@@ -741,6 +831,7 @@ def main():
         calendario_page(data, user)
     elif page == "Histórico":
         historico_page(data)
+
 
 if __name__ == "__main__":
     main()
