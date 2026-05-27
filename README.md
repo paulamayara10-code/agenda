@@ -35,3 +35,18 @@ V9:
 - Restaura scroll da sidebar.
 - Adiciona espaçamento inferior para telas longas.
 - Inclui link "Voltar ao topo".
+
+V10:
+- Corrige conclusão por data: tarefa diária concluída hoje não aparece concluída amanhã.
+- Calendário considera corretamente a data selecionada.
+- Normaliza departamentos para evitar menu duplicado.
+
+
+V11 Coordenação:
+- Nova aba Coordenação.
+- Dashboard gerencial com atrasadas, críticas, abertas, concluídas e sem responsável.
+- Painel de gargalos.
+- Ranking operacional da equipe.
+- Kanban operacional.
+- Feed de atividades com base no Histórico.
+- Backup automático antes de salvar alterações.
