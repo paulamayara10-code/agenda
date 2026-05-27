@@ -81,6 +81,11 @@ st.markdown(
             color: #6b7280;
             font-size: 13px;
         }
+        .stButton > button {
+            border-radius: 12px;
+            font-weight: 600;
+            width: 100%;
+        }
         .title-box {
             padding: 18px 20px;
             background: linear-gradient(90deg, #0f172a, #1e3a8a);
@@ -172,7 +177,7 @@ def status_ativo(valor):
 def tarefa_concluida_hoje(row):
     status = normalizar_texto(row.get("Status")).lower()
     data_conclusao = parse_data(row.get("Data Conclusão"))
-    return status == "concluída" or status == "concluida" and data_conclusao == hoje_data()
+    return status in ["concluída", "concluida", "finalizada", "feito"] and data_conclusao == hoje_data()
 
 
 def tarefa_concluida(row):
@@ -367,8 +372,8 @@ def filtro_base(tarefas):
 
 
 def card_tarefa(row, dados, usuario, key_prefix="task"):
-    tarefas = dados["Tarefas"]
-    historico = dados["Historico"]
+    tarefas = dados["Tarefas"].copy()
+    historico = dados["Historico"].copy()
 
     id_tarefa = row.get("ID")
     tarefa = normalizar_texto(row.get("Tarefa"))
@@ -381,17 +386,10 @@ def card_tarefa(row, dados, usuario, key_prefix="task"):
     pendencias_dep = dependencias_pendentes(row, tarefas)
 
     status_class = "status-ok" if classificacao == "Concluída" else "status-vencida" if classificacao == "Vencida" else "status-hoje"
+    concluida = tarefa_concluida(row)
 
     with st.container(border=True):
-        col_check, col_info, col_meta = st.columns([0.8, 5, 2])
-
-        with col_check:
-            concluida = tarefa_concluida(row)
-            marcado = st.checkbox(
-                "OK",
-                value=concluida,
-                key=f"{key_prefix}_{id_tarefa}_{tarefa}"
-            )
+        col_info, col_meta, col_acao = st.columns([5, 2, 2])
 
         with col_info:
             st.markdown(f"**{tarefa}**")
@@ -400,7 +398,7 @@ def card_tarefa(row, dados, usuario, key_prefix="task"):
             if projeto:
                 st.caption(f"Projeto: {projeto}")
             if pendencias_dep:
-                st.warning(f"Bloqueada/atenção: dependência pendente — {pendencias_dep}")
+                st.warning(f"Dependência pendente: {pendencias_dep}")
 
         with col_meta:
             st.markdown(f"<span class='{status_class}'>{classificacao}</span>", unsafe_allow_html=True)
@@ -408,42 +406,54 @@ def card_tarefa(row, dados, usuario, key_prefix="task"):
             st.caption(f"Responsável: {responsavel or '-'}")
             st.caption(f"Prioridade: {prioridade}")
 
-        if marcado and not tarefa_concluida(row):
-            idx = tarefas.index[tarefas["ID"] == id_tarefa]
-            if len(idx) > 0:
-                agora_dt = agora()
-                tarefas.loc[idx, "Status"] = "Concluída"
-                tarefas.loc[idx, "Concluído Por"] = usuario
-                tarefas.loc[idx, "Data Conclusão"] = agora_dt.strftime("%d/%m/%Y %H:%M:%S")
+        with col_acao:
+            if concluida:
+                st.success("✅ Concluída")
+                if st.button("↩️ Reabrir", key=f"reabrir_{key_prefix}_{id_tarefa}"):
+                    idx_list = tarefas.index[tarefas["ID"].astype(str) == str(id_tarefa)].tolist()
+                    if idx_list:
+                        idx = idx_list[0]
+                        tarefas.at[idx, "Status"] = "Pendente"
+                        tarefas.at[idx, "Concluído Por"] = ""
+                        tarefas.at[idx, "Data Conclusão"] = ""
+                        dados["Tarefas"] = tarefas
+                        salvar_excel(obter_caminho_excel(), dados)
+                        st.rerun()
+            else:
+                if st.button("✅ Marcar concluída", key=f"concluir_{key_prefix}_{id_tarefa}"):
+                    idx_list = tarefas.index[tarefas["ID"].astype(str) == str(id_tarefa)].tolist()
 
-                novo_hist = {
-                    "ID Histórico": proximo_id(historico, "ID Histórico"),
-                    "ID Tarefa": id_tarefa,
-                    "Tarefa": tarefa,
-                    "Usuário": usuario,
-                    "Data": agora_dt.strftime("%d/%m/%Y"),
-                    "Hora": agora_dt.strftime("%H:%M:%S"),
-                    "Status": "Concluída",
-                    "Observação": "",
-                }
-                historico = pd.concat([historico, pd.DataFrame([novo_hist])], ignore_index=True)
+                    if not idx_list:
+                        st.error("Não consegui localizar esta tarefa no Excel.")
+                        return
 
-                dados["Tarefas"] = tarefas
-                dados["Historico"] = historico
-                salvar_excel(obter_caminho_excel(), dados)
-                st.success("Tarefa concluída e histórico registrado.")
-                st.rerun()
+                    idx = idx_list[0]
+                    agora_dt = agora()
 
-        if not marcado and tarefa_concluida(row):
-            idx = tarefas.index[tarefas["ID"] == id_tarefa]
-            if len(idx) > 0:
-                tarefas.loc[idx, "Status"] = "Pendente"
-                tarefas.loc[idx, "Concluído Por"] = ""
-                tarefas.loc[idx, "Data Conclusão"] = ""
-                dados["Tarefas"] = tarefas
-                salvar_excel(obter_caminho_excel(), dados)
-                st.warning("Tarefa reaberta.")
-                st.rerun()
+                    tarefas.at[idx, "Status"] = "Concluída"
+                    tarefas.at[idx, "Concluído Por"] = usuario
+                    tarefas.at[idx, "Data Conclusão"] = agora_dt.strftime("%d/%m/%Y %H:%M:%S")
+
+                    novo_hist = {
+                        "ID Histórico": proximo_id(historico, "ID Histórico"),
+                        "ID Tarefa": id_tarefa,
+                        "Tarefa": tarefa,
+                        "Usuário": usuario,
+                        "Data": agora_dt.strftime("%d/%m/%Y"),
+                        "Hora": agora_dt.strftime("%H:%M:%S"),
+                        "Status": "Concluída",
+                        "Observação": "",
+                    }
+
+                    historico = pd.concat([historico, pd.DataFrame([novo_hist])], ignore_index=True)
+
+                    dados["Tarefas"] = tarefas
+                    dados["Historico"] = historico
+                    salvar_excel(obter_caminho_excel(), dados)
+
+                    st.success("Tarefa concluída e histórico registrado.")
+                    st.rerun()
+
 
 
 # ============================================================
