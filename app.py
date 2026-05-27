@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
 from datetime import datetime, date, time
+from zoneinfo import ZoneInfo
 import hashlib
 
 import pandas as pd
@@ -16,6 +17,11 @@ st.set_page_config(
 )
 
 ARQUIVO_EXCEL = "Agenda.xlsx"
+FUSO_HORARIO = ZoneInfo("America/Sao_Paulo")
+
+
+def agora_brasilia():
+    return datetime.now(FUSO_HORARIO)
 
 ABAS = {
     "Usuarios": ["ID", "Nome", "Login", "Senha", "Perfil", "Departamento", "Ativo", "Data Cadastro"],
@@ -52,7 +58,9 @@ section[data-testid="stSidebar"] * { color: #f8fafc !important; }
 .highlight-panel { background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%); border: 1px solid #c7d2fe; border-radius: 24px; padding: 22px; box-shadow: 0 8px 28px rgba(79, 70, 229, 0.08); margin-top: 18px; }
 .panel-title { font-size: 22px; font-weight: 800; color: #111827; margin-bottom: 18px; }
 .task-title { font-size: 18px; font-weight: 800; color: #111827; }
+.task-title-done { font-size: 18px; font-weight: 800; color: #64748b; text-decoration: line-through; }
 .task-desc { color: #64748b; font-size: 14px; margin-top: 6px; }
+.task-muted { opacity: 0.72; }
 .tag { display: inline-block; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-right: 6px; margin-top: 8px; }
 .tag-blue { background:#dbeafe; color:#1d4ed8; }
 .tag-green { background:#dcfce7; color:#15803d; }
@@ -61,6 +69,24 @@ section[data-testid="stSidebar"] * { color: #f8fafc !important; }
 .tag-purple { background:#ede9fe; color:#6d28d9; }
 .stButton > button { border-radius: 14px; min-height: 44px; font-weight: 700; border: 1px solid #d1d5db; }
 .stButton > button:hover { border-color: #7c3aed; color: #7c3aed; }
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-radius: 12px !important;
+    border: 1px solid #334155 !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] span,
+section[data-testid="stSidebar"] div[data-baseweb="select"] div {
+    color: #111827 !important;
+}
+
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p {
+    color: #e5e7eb !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -244,7 +270,7 @@ def atualizar_status_tarefa(data, id_tarefa, novo_status, usuario=""):
 
     if novo_status == "Concluída":
         tarefas.at[idx, "Concluído Por"] = str(usuario)
-        tarefas.at[idx, "Data Conclusão"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        tarefas.at[idx, "Data Conclusão"] = agora_brasilia().strftime("%d/%m/%Y %H:%M:%S")
     else:
         tarefas.at[idx, "Concluído Por"] = ""
         tarefas.at[idx, "Data Conclusão"] = ""
@@ -256,7 +282,7 @@ def atualizar_status_tarefa(data, id_tarefa, novo_status, usuario=""):
 def registrar_historico(data, id_tarefa, tarefa, usuario, status="Concluída", observacao=""):
     hist = ensure_cols(data["Historico"], ABAS["Historico"])
     hist = hist.astype("object")
-    now = datetime.now()
+    now = agora_brasilia()
 
     novo = {
         "ID Histórico": str(next_id(hist, "ID Histórico")),
@@ -281,7 +307,7 @@ def header(title, subtitle):
         st.markdown(f"<div class='subtitle'>{subtitle}</div>", unsafe_allow_html=True)
 
     with col2:
-        hoje = datetime.now()
+        hoje = agora_brasilia()
         st.markdown(
             f"""
             <div style='text-align:right; color:#0f172a; font-weight:800; margin-top:8px;'>
@@ -323,7 +349,6 @@ def sidebar(data):
         nomes = ["Paula"]
 
     user = st.sidebar.selectbox("Usuário logado", nomes)
-    st.sidebar.caption("Todos visualizam tudo. As tarefas do usuário logado aparecem em destaque.")
     st.sidebar.divider()
 
     departamentos = get_departamentos(data)
@@ -331,6 +356,7 @@ def sidebar(data):
         "Projetos",
         "Calendário",
         "Cadastro de tarefas",
+        "Editar tarefas",
         "Histórico"
     ]
 
@@ -341,7 +367,7 @@ def sidebar(data):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 1.5.0")
+    st.sidebar.caption("Versão 1.8.0")
     return user, page, departamentos
 
 
@@ -370,7 +396,8 @@ def task_card(row, data, user, prefix):
         c1, c2 = st.columns([4.8, 1.25])
 
         with c1:
-            st.markdown(f"<div class='task-title'>{'⭐ ' if minha else ''}{titulo}</div>", unsafe_allow_html=True)
+            classe_titulo = "task-title-done" if done(row) else "task-title"
+            st.markdown(f"<div class='{classe_titulo}'>{'⭐ ' if minha else ''}{titulo}</div>", unsafe_allow_html=True)
 
             if desc:
                 st.markdown(f"<div class='task-desc'>{desc}</div>", unsafe_allow_html=True)
@@ -487,6 +514,15 @@ def dashboard(data, user):
                 task_card(row, data, user, "hoje")
         st.markdown("</div>", unsafe_allow_html=True)
 
+    st.markdown("<div class='panel'><div class='panel-title'>✅ Concluídas hoje</div>", unsafe_allow_html=True)
+    concluidas_visiveis = filtradas[filtradas["Classificacao"] == "Concluída hoje"]
+    if concluidas_visiveis.empty:
+        st.info("Nenhuma tarefa concluída hoje.")
+    else:
+        for _, row in concluidas_visiveis.iterrows():
+            task_card(row, data, user, "concluidas_hoje")
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 def minhas_tarefas_page(data, user):
     header("Minhas tarefas", f"Atividades atribuídas a {user}")
@@ -512,7 +548,8 @@ def minhas_tarefas_page(data, user):
         if concluidas.empty:
             st.info("Nenhuma tarefa concluída.")
         else:
-            st.dataframe(concluidas, use_container_width=True, hide_index=True)
+            for _, row in concluidas.iterrows():
+                task_card(row, data, user, "minhas_concluidas")
 
 
 def departamento_page(data, user, depto):
@@ -521,10 +558,18 @@ def departamento_page(data, user, depto):
     tarefas = tarefas[tarefas["Departamento"].astype(str).str.lower().str.strip() == depto.lower()]
 
     busca = st.text_input("🔎 Buscar tarefa")
-    somente_minhas = st.toggle("Mostrar somente minhas tarefas neste departamento", value=False)
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        somente_minhas = st.toggle("Mostrar somente minhas tarefas neste departamento", value=False)
+    with col_f2:
+        mostrar_concluidas = st.toggle("Mostrar concluídas", value=False)
 
     if somente_minhas:
         tarefas = tarefas[tarefas.apply(lambda r: belongs_to_user(r, user), axis=1)]
+
+    if not mostrar_concluidas:
+        tarefas = tarefas[~tarefas.apply(done, axis=1)]
+
     if busca:
         b = busca.lower()
         tarefas = tarefas[
@@ -625,6 +670,178 @@ def cadastro_page(data, user):
             st.rerun()
 
 
+
+def editar_tarefas_page(data, user):
+    header("Editar tarefas", "Altere atividades já cadastradas")
+
+    tarefas = ensure_cols(data["Tarefas"], ABAS["Tarefas"])
+    tarefas_ativas = tarefas[tarefas["Ativa"].apply(is_active)].copy()
+
+    if tarefas_ativas.empty:
+        st.info("Nenhuma tarefa ativa cadastrada.")
+        return
+
+    tarefas_ativas["Opcao"] = (
+        tarefas_ativas["ID"].astype(str).str.strip()
+        + " - "
+        + tarefas_ativas["Tarefa"].astype(str).str.strip()
+        + " | "
+        + tarefas_ativas["Departamento"].astype(str).str.strip()
+    )
+
+    busca = st.text_input("🔎 Buscar tarefa para editar")
+
+    lista_opcoes = tarefas_ativas.copy()
+    if busca:
+        b = busca.lower()
+        lista_opcoes = lista_opcoes[
+            lista_opcoes["Tarefa"].astype(str).str.lower().str.contains(b, na=False)
+            | lista_opcoes["Departamento"].astype(str).str.lower().str.contains(b, na=False)
+            | lista_opcoes["Responsavel"].astype(str).str.lower().str.contains(b, na=False)
+        ]
+
+    if lista_opcoes.empty:
+        st.warning("Nenhuma tarefa encontrada com esse filtro.")
+        return
+
+    opcao = st.selectbox("Selecione a tarefa", lista_opcoes["Opcao"].tolist())
+    id_selecionado = str(opcao).split(" - ")[0].strip()
+
+    idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == id_selecionado].tolist()
+    if not idxs:
+        st.error("Não consegui localizar essa tarefa no Excel.")
+        return
+
+    idx = idxs[0]
+    atual = tarefas.loc[idx]
+
+    deptos = get_departamentos(data) or ["Financeiro", "Controladoria", "Contabilidade", "Projetos"]
+    if txt(atual.get("Departamento")) and txt(atual.get("Departamento")) not in deptos:
+        deptos.append(txt(atual.get("Departamento")))
+
+    usuarios = data["Usuarios"].copy()
+    responsaveis = [""] + sorted([x for x in usuarios["Nome"].dropna().astype(str).unique() if x])
+    if txt(atual.get("Responsavel")) and txt(atual.get("Responsavel")) not in responsaveis:
+        responsaveis.append(txt(atual.get("Responsavel")))
+
+    projetos = data["Projetos"].copy()
+    projetos_l = [""] + sorted([x for x in projetos["Projeto"].dropna().astype(str).unique() if x])
+    if txt(atual.get("Projeto")) and txt(atual.get("Projeto")) not in projetos_l:
+        projetos_l.append(txt(atual.get("Projeto")))
+
+    tarefas_l = [""] + sorted([x for x in tarefas["Tarefa"].dropna().astype(str).unique() if x and x != txt(atual.get("Tarefa"))])
+    if txt(atual.get("Dependencia")) and txt(atual.get("Dependencia")) not in tarefas_l:
+        tarefas_l.append(txt(atual.get("Dependencia")))
+
+    periodicidades = ["Diario", "Semanal", "Mensal", "Unica"]
+    if txt(atual.get("Periodicidade")) and txt(atual.get("Periodicidade")) not in periodicidades:
+        periodicidades.append(txt(atual.get("Periodicidade")))
+
+    prioridades = ["Normal", "Alta", "Crítica", "Baixa"]
+    if txt(atual.get("Prioridade")) and txt(atual.get("Prioridade")) not in prioridades:
+        prioridades.append(txt(atual.get("Prioridade")))
+
+    status_opts = ["Pendente", "Concluída", "Suspensa"]
+    if txt(atual.get("Status")) and txt(atual.get("Status")) not in status_opts:
+        status_opts.append(txt(atual.get("Status")))
+
+    data_ini_atual = parse_date(atual.get("Data de Inicio")) or date.today()
+
+    with st.form("form_editar_tarefa"):
+        c1, c2 = st.columns(2)
+
+        with c1:
+            tarefa = st.text_input("Tarefa", value=txt(atual.get("Tarefa")))
+            desc = st.text_area("Descrição", value=txt(atual.get("Descrição")))
+            depto = st.selectbox(
+                "Departamento",
+                deptos,
+                index=deptos.index(txt(atual.get("Departamento"))) if txt(atual.get("Departamento")) in deptos else 0
+            )
+            projeto = st.selectbox(
+                "Projeto",
+                projetos_l,
+                index=projetos_l.index(txt(atual.get("Projeto"))) if txt(atual.get("Projeto")) in projetos_l else 0
+            )
+            resp = st.selectbox(
+                "Responsável",
+                responsaveis,
+                index=responsaveis.index(txt(atual.get("Responsavel"))) if txt(atual.get("Responsavel")) in responsaveis else 0
+            )
+
+        with c2:
+            per = st.selectbox(
+                "Periodicidade",
+                periodicidades,
+                index=periodicidades.index(txt(atual.get("Periodicidade"))) if txt(atual.get("Periodicidade")) in periodicidades else 0
+            )
+            obrig = st.selectbox(
+                "Obrigatória",
+                ["Não", "Sim"],
+                index=1 if txt(atual.get("Obrigatoria")).lower() in ["sim", "s", "true", "1"] else 0
+            )
+            prio = st.selectbox(
+                "Prioridade",
+                prioridades,
+                index=prioridades.index(txt(atual.get("Prioridade"))) if txt(atual.get("Prioridade")) in prioridades else 0
+            )
+            dep = st.selectbox(
+                "Dependência",
+                tarefas_l,
+                index=tarefas_l.index(txt(atual.get("Dependencia"))) if txt(atual.get("Dependencia")) in tarefas_l else 0
+            )
+            data_ini = st.date_input("Data de início", value=data_ini_atual)
+            status = st.selectbox(
+                "Status",
+                status_opts,
+                index=status_opts.index(txt(atual.get("Status"))) if txt(atual.get("Status")) in status_opts else 0
+            )
+
+        obs = st.text_area("Observação", value=txt(atual.get("Observação")))
+
+        cbtn1, cbtn2 = st.columns(2)
+        with cbtn1:
+            salvar = st.form_submit_button("💾 Salvar alterações")
+        with cbtn2:
+            arquivar = st.form_submit_button("🗄️ Arquivar tarefa")
+
+    if salvar:
+        tarefas = tarefas.astype("object")
+        tarefas.at[idx, "Tarefa"] = str(tarefa)
+        tarefas.at[idx, "Descrição"] = str(desc)
+        tarefas.at[idx, "Departamento"] = str(depto)
+        tarefas.at[idx, "Projeto"] = str(projeto)
+        tarefas.at[idx, "Responsavel"] = str(resp)
+        tarefas.at[idx, "Periodicidade"] = str(per)
+        tarefas.at[idx, "Obrigatoria"] = str(obrig)
+        tarefas.at[idx, "Prioridade"] = str(prio)
+        tarefas.at[idx, "Dependencia"] = str(dep)
+        tarefas.at[idx, "Data de Inicio"] = data_ini.strftime("%d/%m/%Y")
+        tarefas.at[idx, "Status"] = str(status)
+        tarefas.at[idx, "Observação"] = str(obs)
+
+        if status != "Concluída":
+            tarefas.at[idx, "Concluído Por"] = ""
+            tarefas.at[idx, "Data Conclusão"] = ""
+
+        data["Tarefas"] = tarefas
+        registrar_historico(data, id_selecionado, tarefa, user, "Alterada", "Tarefa editada pelo app")
+        save_data(get_path(), data)
+        st.success("Tarefa atualizada com sucesso.")
+        st.rerun()
+
+    if arquivar:
+        tarefas = tarefas.astype("object")
+        tarefas.at[idx, "Ativa"] = "Não"
+        tarefas.at[idx, "Status"] = "Arquivada"
+        data["Tarefas"] = tarefas
+        registrar_historico(data, id_selecionado, txt(atual.get("Tarefa")), user, "Arquivada", "Tarefa arquivada pelo app")
+        save_data(get_path(), data)
+        st.success("Tarefa arquivada.")
+        st.rerun()
+
+
+
 def calendario_page(data, user):
     header("Calendário", "Visão operacional por data")
     tarefas = prepared_tasks(data)
@@ -661,6 +878,8 @@ def main():
         projetos_page(data, user)
     elif page == "Cadastro de tarefas":
         cadastro_page(data, user)
+    elif page == "Editar tarefas":
+        editar_tarefas_page(data, user)
     elif page == "Calendário":
         calendario_page(data, user)
     elif page == "Histórico":
