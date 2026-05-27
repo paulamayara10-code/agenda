@@ -28,3 +28,10 @@ V8:
 - Permite alterar tarefas existentes.
 - Permite arquivar tarefas sem excluir histórico.
 - Registra alteração/arquivamento no Histórico.
+
+
+V9:
+- Restaura scroll vertical da tela principal.
+- Restaura scroll da sidebar.
+- Adiciona espaçamento inferior para telas longas.
+- Inclui link "Voltar ao topo".

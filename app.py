@@ -70,6 +70,41 @@ section[data-testid="stSidebar"] * { color: #f8fafc !important; }
 .stButton > button { border-radius: 14px; min-height: 44px; font-weight: 700; border: 1px solid #d1d5db; }
 .stButton > button:hover { border-color: #7c3aed; color: #7c3aed; }
 
+/* Correção de scroll */
+html, body {
+    overflow-y: auto !important;
+}
+
+div[data-testid="stAppViewContainer"] {
+    overflow-y: auto !important;
+}
+
+section.main {
+    overflow-y: auto !important;
+}
+
+section[data-testid="stSidebar"] {
+    overflow-y: auto !important;
+    max-height: 100vh !important;
+}
+
+div[data-testid="stSidebarContent"] {
+    overflow-y: auto !important;
+    max-height: 100vh !important;
+    padding-bottom: 40px !important;
+}
+
+div.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 5rem !important;
+    overflow-y: visible !important;
+}
+
+[data-testid="stVerticalBlock"] {
+    overflow: visible !important;
+}
+
+
 section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     background-color: #ffffff !important;
     color: #111827 !important;
@@ -299,11 +334,25 @@ def registrar_historico(data, id_tarefa, tarefa, usuario, status="Concluída", o
     return data
 
 
+
+def voltar_topo():
+    st.markdown(
+        """
+        <div style="text-align:right; margin-top:30px;">
+            <a href="#agenda-operacional" style="text-decoration:none; font-weight:700; color:#7c3aed;">
+                ↑ Voltar ao topo
+            </a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
 def header(title, subtitle):
     col1, col2 = st.columns([4, 1.5])
 
     with col1:
-        st.markdown(f"<div class='main-title'>{title}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div id='agenda-operacional' class='main-title'>{title}</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='subtitle'>{subtitle}</div>", unsafe_allow_html=True)
 
     with col2:
@@ -367,7 +416,7 @@ def sidebar(data):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 1.8.0")
+    st.sidebar.caption("Versão 1.9.0")
     return user, page, departamentos
 
 
@@ -884,6 +933,8 @@ def main():
         calendario_page(data, user)
     elif page == "Histórico":
         historico_page(data)
+
+    voltar_topo()
 
 
 if __name__ == "__main__":
