@@ -73,3 +73,10 @@ V14 Sidebar fixa:
 - Remove botão de recolher sidebar quando aberta.
 - Botão de sidebar recolhida fica visível caso o navegador preserve estado recolhido.
 - Conteúdo principal é deslocado para não ficar atrás do menu.
+
+
+V15:
+- Corrige sobreposição da sidebar fixa.
+- Reduz largura da sidebar para 240px.
+- Desloca área principal corretamente para a direita.
+- Ajusta largura útil dos cards e painéis.

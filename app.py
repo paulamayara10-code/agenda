@@ -635,6 +635,72 @@ section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] {
     }
 }
 
+
+/* ================= V15 CORREÇÃO SOBREPOSIÇÃO SIDEBAR ================= */
+
+/* Sidebar fixa com largura menor e estável */
+section[data-testid="stSidebar"] {
+    min-width: 240px !important;
+    width: 240px !important;
+    max-width: 240px !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    height: 100vh !important;
+    z-index: 999999 !important;
+}
+
+/* Área principal deslocada para a direita */
+div[data-testid="stAppViewContainer"] {
+    margin-left: 240px !important;
+    width: calc(100vw - 240px) !important;
+}
+
+/* O main do Streamlit precisa respeitar a nova área útil */
+div[data-testid="stAppViewContainer"] > section {
+    margin-left: 0 !important;
+    width: 100% !important;
+}
+
+/* Container interno com respiro */
+div.block-container {
+    padding-left: 2.2rem !important;
+    padding-right: 2.2rem !important;
+    max-width: 1280px !important;
+}
+
+/* Evita que cards largos passem da tela */
+.dashboard-hero,
+.panel,
+.highlight-panel {
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+
+/* Corrige sidebar em telas menores */
+@media (max-width: 1100px) {
+    section[data-testid="stSidebar"] {
+        min-width: 220px !important;
+        width: 220px !important;
+        max-width: 220px !important;
+    }
+
+    div[data-testid="stAppViewContainer"] {
+        margin-left: 220px !important;
+        width: calc(100vw - 220px) !important;
+    }
+
+    div.block-container {
+        padding-left: 1.2rem !important;
+        padding-right: 1.2rem !important;
+    }
+}
+
+/* Remove tentativas anteriores conflitantes */
+section.main {
+    margin-left: 0 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1084,7 +1150,7 @@ def sidebar(data):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 2.4.0 Sidebar fixa")
+    st.sidebar.caption("Versão 2.5.0 Sidebar ajustada")
     return user, page, departamentos
 
 
