@@ -66,3 +66,10 @@ V13 Premium:
 - Hero no Dashboard.
 - Cards e métricas com visual mais moderno.
 - Data/hora em pill no topo.
+
+
+V14 Sidebar fixa:
+- Sidebar fixada à esquerda.
+- Remove botão de recolher sidebar quando aberta.
+- Botão de sidebar recolhida fica visível caso o navegador preserve estado recolhido.
+- Conteúdo principal é deslocado para não ficar atrás do menu.

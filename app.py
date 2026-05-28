@@ -551,6 +551,90 @@ input, textarea { border-radius: 16px !important; }
     box-shadow: 0 10px 30px rgba(15,23,42,0.06);
 }
 
+
+/* ================= V14 SIDEBAR FIXA ================= */
+
+/* Mantém a sidebar sempre visível e com contraste */
+section[data-testid="stSidebar"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-width: 310px !important;
+    width: 310px !important;
+    max-width: 310px !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    height: 100vh !important;
+    z-index: 999999 !important;
+}
+
+/* Empurra o conteúdo para não ficar atrás da sidebar fixa */
+section.main,
+div[data-testid="stAppViewContainer"] main {
+    margin-left: 310px !important;
+}
+
+/* Remove/oculta o botão de recolher a sidebar quando ela está aberta */
+button[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Se por algum motivo o Streamlit mostrar o botão de sidebar recolhida,
+   deixa ele bem visível para recuperação */
+button[data-testid="collapsedControl"],
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    background: #7c3aed !important;
+    color: #ffffff !important;
+    border-radius: 999px !important;
+    border: 2px solid #ffffff !important;
+    box-shadow: 0 10px 30px rgba(124,58,237,0.45) !important;
+    position: fixed !important;
+    left: 12px !important;
+    top: 12px !important;
+    z-index: 1000000 !important;
+}
+
+/* Garante que textos da sidebar fiquem legíveis */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span {
+    color: #ffffff !important;
+}
+
+/* Mas mantém o nome selecionado do usuário escuro dentro do select branco */
+section[data-testid="stSidebar"] div[data-baseweb="select"] span,
+section[data-testid="stSidebar"] div[data-baseweb="select"] div {
+    color: #0f172a !important;
+}
+
+/* Scroll interno da sidebar fixa */
+section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] {
+    overflow-y: auto !important;
+    max-height: 100vh !important;
+    padding-bottom: 60px !important;
+}
+
+/* Ajuste responsivo: em telas pequenas, permite sidebar menor */
+@media (max-width: 900px) {
+    section[data-testid="stSidebar"] {
+        min-width: 270px !important;
+        width: 270px !important;
+        max-width: 270px !important;
+    }
+
+    section.main,
+    div[data-testid="stAppViewContainer"] main {
+        margin-left: 270px !important;
+    }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1000,7 +1084,7 @@ def sidebar(data):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 2.3.0 Premium")
+    st.sidebar.caption("Versão 2.4.0 Sidebar fixa")
     return user, page, departamentos
 
 
