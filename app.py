@@ -175,6 +175,382 @@ section[data-testid="stSidebar"] p {
     color: #334155;
 }
 
+
+/* ================= V12 UI/UX ================= */
+:root {
+    --primary: #6d28d9;
+    --primary2: #2563eb;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --surface: #ffffff;
+    --soft: #f8fafc;
+}
+
+div.block-container {
+    padding-top: 1.3rem !important;
+    max-width: 1480px !important;
+}
+
+section[data-testid="stSidebar"] {
+    background: radial-gradient(circle at top left, #312e81 0%, #111827 38%, #020617 100%) !important;
+    border-right: 1px solid rgba(255,255,255,0.08);
+}
+
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: #ffffff !important;
+    letter-spacing: -0.03em;
+}
+
+section[data-testid="stSidebar"] div[role="radiogroup"] label {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 14px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 6px !important;
+}
+
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+    background: rgba(124,58,237,0.28) !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background: #ffffff !important;
+    border-radius: 14px !important;
+    border: 1px solid #a78bfa !important;
+    min-height: 44px;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] * {
+    color: #111827 !important;
+}
+
+.main-title {
+    font-size: 40px !important;
+    letter-spacing: -0.04em;
+    background: linear-gradient(90deg, #111827, #4338ca, #7c3aed);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+    font-size: 16px !important;
+}
+
+.metric-card {
+    border: 1px solid rgba(226,232,240,0.9) !important;
+    border-radius: 28px !important;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    box-shadow: 0 16px 45px rgba(15,23,42,0.08) !important;
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 55px rgba(15,23,42,0.11) !important;
+}
+
+.panel, .highlight-panel {
+    border-radius: 30px !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 18px 45px rgba(15,23,42,0.07) !important;
+}
+
+.highlight-panel {
+    background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 55%, #eff6ff 100%) !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 22px !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: 0 8px 24px rgba(15,23,42,0.05);
+}
+
+.task-title, .task-title-done {
+    letter-spacing: -0.02em;
+}
+
+.tag {
+    border: 1px solid rgba(255,255,255,0.4);
+}
+
+.coord-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #312e81 52%, #6d28d9 100%);
+    color: #ffffff;
+    border-radius: 32px;
+    padding: 28px 30px;
+    box-shadow: 0 22px 60px rgba(49,46,129,0.26);
+    margin-bottom: 20px;
+}
+
+.coord-hero h2 {
+    margin: 0;
+    font-size: 30px;
+    letter-spacing: -0.04em;
+}
+
+.coord-hero p {
+    margin: 6px 0 0 0;
+    color: #ddd6fe;
+}
+
+.v12-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 24px;
+    padding: 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 12px 35px rgba(15,23,42,0.06);
+}
+
+.v12-card-title {
+    font-weight: 850;
+    color: #0f172a;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+}
+
+.v12-card-meta {
+    color: #64748b;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.kanban-col {
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 28px;
+    padding: 16px;
+    min-height: 420px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.kanban-header {
+    font-size: 18px;
+    font-weight: 850;
+    color: #0f172a;
+    letter-spacing: -0.03em;
+    margin-bottom: 14px;
+}
+
+.feed-item {
+    background: linear-gradient(90deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    padding: 13px 15px;
+    margin-bottom: 10px;
+    box-shadow: 0 8px 25px rgba(15,23,42,0.04);
+}
+
+.sla-red { border-left: 8px solid #dc2626 !important; }
+.sla-yellow { border-left: 8px solid #f59e0b !important; }
+.sla-green { border-left: 8px solid #16a34a !important; }
+.sla-purple { border-left: 8px solid #7c3aed !important; }
+.sla-gray { border-left: 8px solid #94a3b8 !important; }
+
+.stButton > button {
+    border-radius: 16px !important;
+}
+
+
+/* ================= V13 PREMIUM VISUAL ================= */
+
+/* Ocultar elementos padrão do Streamlit */
+header[data-testid="stHeader"] { display: none !important; }
+div[data-testid="stToolbar"] { display: none !important; }
+div[data-testid="stDecoration"] { display: none !important; }
+#MainMenu { visibility: hidden !important; }
+footer { visibility: hidden !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+
+.stApp { background: #f4f7fb !important; }
+
+div.block-container {
+    padding-top: 2rem !important;
+    padding-left: 3rem !important;
+    padding-right: 3rem !important;
+    max-width: 1600px !important;
+}
+
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #020617 0%, #111827 45%, #1e1b4b 100%) !important;
+    width: 310px !important;
+    min-width: 310px !important;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 12px 0 40px rgba(15, 23, 42, 0.18);
+}
+
+section[data-testid="stSidebar"] > div {
+    padding: 2rem 1.3rem !important;
+}
+
+section[data-testid="stSidebar"] h2 {
+    font-size: 24px !important;
+    font-weight: 900 !important;
+    line-height: 1.05 !important;
+}
+
+section[data-testid="stSidebar"] h3 {
+    font-size: 18px !important;
+    color: #c4b5fd !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+    color: #0f172a !important;
+    border-radius: 18px !important;
+    border: 2px solid #8b5cf6 !important;
+    min-height: 52px !important;
+    box-shadow: 0 10px 30px rgba(124,58,237,0.18);
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] * {
+    color: #0f172a !important;
+    font-weight: 750 !important;
+}
+
+section[data-testid="stSidebar"] div[role="radiogroup"] label {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 18px !important;
+    padding: 10px 12px !important;
+    margin: 1px 0 !important;
+    transition: all .18s ease;
+}
+
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+    background: rgba(139, 92, 246, 0.20) !important;
+    transform: translateX(2px);
+}
+
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+    background: linear-gradient(135deg, rgba(124,58,237,0.75), rgba(37,99,235,0.55)) !important;
+    box-shadow: 0 8px 24px rgba(124,58,237,0.22);
+}
+
+.main-title {
+    font-size: 46px !important;
+    font-weight: 950 !important;
+    letter-spacing: -0.055em !important;
+    color: #0f172a !important;
+    background: none !important;
+    -webkit-text-fill-color: #0f172a !important;
+}
+
+.subtitle {
+    color: #64748b !important;
+    font-size: 16px !important;
+    margin-bottom: 22px !important;
+}
+
+.dashboard-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #312e81 45%, #6d28d9 100%);
+    border-radius: 34px;
+    padding: 30px 34px;
+    color: #ffffff;
+    margin-bottom: 24px;
+    box-shadow: 0 24px 70px rgba(49, 46, 129, 0.30);
+}
+
+.dashboard-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0;
+    letter-spacing: -0.045em;
+}
+
+.dashboard-hero p {
+    color: #ddd6fe;
+    margin: 8px 0 0 0;
+    font-size: 16px;
+}
+
+.metric-card {
+    border-radius: 30px !important;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08) !important;
+    padding: 24px !important;
+}
+
+.metric-label {
+    font-size: 14px !important;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: #64748b !important;
+}
+
+.metric-value {
+    font-size: 42px !important;
+    font-weight: 950 !important;
+}
+
+.panel, .highlight-panel {
+    border-radius: 34px !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 18px 55px rgba(15, 23, 42, 0.08) !important;
+    background: #ffffff !important;
+}
+
+.highlight-panel {
+    background: linear-gradient(135deg, #ffffff 0%, #f5f3ff 100%) !important;
+    border: 1px solid #c4b5fd !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 26px !important;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 12px 35px rgba(15,23,42,0.07) !important;
+}
+
+.task-title {
+    font-size: 20px !important;
+    font-weight: 900 !important;
+}
+
+.task-title-done {
+    font-size: 20px !important;
+    font-weight: 850 !important;
+    color: #94a3b8 !important;
+    text-decoration: line-through;
+}
+
+.tag {
+    padding: 7px 12px !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+}
+
+.stButton > button {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 18px !important;
+    min-height: 48px !important;
+    font-weight: 850 !important;
+    color: #0f172a !important;
+    box-shadow: 0 8px 22px rgba(15,23,42,0.05);
+}
+
+.stButton > button:hover {
+    border-color: #7c3aed !important;
+    color: #6d28d9 !important;
+    box-shadow: 0 10px 28px rgba(124,58,237,0.16);
+}
+
+input, textarea { border-radius: 16px !important; }
+
+.top-date-pill {
+    display: inline-block;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-weight: 850;
+    color: #0f172a;
+    box-shadow: 0 10px 30px rgba(15,23,42,0.06);
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -570,11 +946,8 @@ def header(title, subtitle):
         hoje = agora_brasilia()
         st.markdown(
             f"""
-            <div style='text-align:right; color:#0f172a; font-weight:800; margin-top:8px;'>
-                📅 {hoje.strftime('%d/%m/%Y')}
-            </div>
-            <div style='text-align:right; color:#64748b; font-size:14px;'>
-                {hoje.strftime('%H:%M')}
+            <div style='text-align:right; margin-top:8px;'>
+                <span class="top-date-pill">📅 {hoje.strftime('%d/%m/%Y')} • {hoje.strftime('%H:%M')}</span>
             </div>
             """,
             unsafe_allow_html=True
@@ -609,25 +982,25 @@ def sidebar(data):
         nomes = ["Paula"]
 
     user = st.sidebar.selectbox("Usuário logado", nomes)
+
     st.sidebar.divider()
 
     departamentos = get_departamentos(data)
-    menu = ["Dashboard", "Minhas tarefas"] + departamentos + [
+    menu = ["Dashboard", "Coordenação", "Minhas tarefas"] + departamentos + [
         "Projetos",
         "Calendário",
         "Cadastro de tarefas",
-        "Editar tarefas",
         "Histórico"
     ]
 
     page = st.sidebar.radio("Navegação", menu)
-    st.sidebar.divider()
 
+    st.sidebar.divider()
     if st.sidebar.button("🔄 Atualizar dados"):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 2.1.0 Coordenação")
+    st.sidebar.caption("Versão 2.3.0 Premium")
     return user, page, departamentos
 
 
@@ -702,12 +1075,21 @@ def task_card(row, data, user, prefix):
 
 
 
+
 def coordenacao_page(data, user):
     header("Coordenação", "Central gerencial da operação")
 
-    tarefas = prepared_tasks(data)
-    hist = ensure_cols(data["Historico"], ABAS["Historico"])
+    st.markdown(
+        """
+        <div class="coord-hero">
+            <h2>Central de Coordenação</h2>
+            <p>Visão executiva de pendências, gargalos, produtividade e movimentações do time.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
+    tarefas = prepared_tasks(data)
     abertas = tarefas[~tarefas.apply(lambda r: done(r, date.today()), axis=1)]
     atrasadas = tarefas[tarefas.apply(lambda r: sla_status(r, date.today())[0] == "Atrasada", axis=1)]
     criticas = abertas[abertas["Prioridade"].astype(str).str.lower().isin(["crítica", "critica"])]
@@ -726,63 +1108,30 @@ def coordenacao_page(data, user):
     with c5:
         metric_card("👤 Sem responsável", len(sem_resp), "Corrigir cadastro", "#2563eb")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown("<div class='panel'><div class='panel-title'>🚦 Painel de gargalos</div>", unsafe_allow_html=True)
-    if atrasadas.empty and criticas.empty and sem_resp.empty:
-        st.success("Nenhum gargalo crítico identificado agora.")
-    else:
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("#### 🔴 Atrasadas")
-            if atrasadas.empty:
-                st.info("Sem atrasadas.")
-            else:
-                for _, row in atrasadas.head(8).iterrows():
-                    card_tarefa_resumo(row, user, "atrasadas")
-
-        with col2:
-            st.markdown("#### 🟣 Críticas")
-            if criticas.empty:
-                st.info("Sem críticas abertas.")
-            else:
-                for _, row in criticas.head(8).iterrows():
-                    card_tarefa_resumo(row, user, "criticas")
-
-        with col3:
-            st.markdown("#### 👤 Sem responsável")
-            if sem_resp.empty:
-                st.info("Todas têm responsável.")
-            else:
-                for _, row in sem_resp.head(8).iterrows():
-                    card_tarefa_resumo(row, user, "sem_resp")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='panel'><div class='panel-title'>📊 Ranking operacional da equipe</div>", unsafe_allow_html=True)
-    ranking = ranking_operacional(data)
-    if ranking.empty:
-        st.info("Ainda não há responsáveis suficientes para ranking.")
-    else:
-        st.dataframe(ranking.sort_values(["Atrasadas", "Pendentes"], ascending=[True, True]), use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("<div class='panel'><div class='panel-title'>🧭 Kanban operacional</div>", unsafe_allow_html=True)
-    k1, k2, k3 = st.columns(3)
+    k1, k2, k3, k4 = st.columns(4)
 
     with k1:
-        st.markdown("<div class='kanban-col'><div class='kanban-header'>🔴 A fazer / atrasadas</div>", unsafe_allow_html=True)
-        lista = atrasadas.head(10)
-        if lista.empty:
+        st.markdown("<div class='kanban-col'><div class='kanban-header'>🔴 Atrasadas</div>", unsafe_allow_html=True)
+        if atrasadas.empty:
             st.success("Sem atrasadas.")
         else:
-            for _, row in lista.iterrows():
+            for _, row in atrasadas.head(8).iterrows():
                 card_tarefa_resumo(row, user, "kanban_atrasadas")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with k2:
+        st.markdown("<div class='kanban-col'><div class='kanban-header'>🟣 Críticas</div>", unsafe_allow_html=True)
+        if criticas.empty:
+            st.info("Sem críticas abertas.")
+        else:
+            for _, row in criticas.head(8).iterrows():
+                card_tarefa_resumo(row, user, "kanban_criticas")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with k3:
         st.markdown("<div class='kanban-col'><div class='kanban-header'>🟡 Hoje</div>", unsafe_allow_html=True)
-        hoje = abertas[abertas.apply(lambda r: periodic_today(r), axis=1)].head(10)
+        hoje = abertas[abertas.apply(lambda r: periodic_today(r), axis=1)].head(8)
         if hoje.empty:
             st.info("Sem tarefas de hoje.")
         else:
@@ -790,16 +1139,46 @@ def coordenacao_page(data, user):
                 card_tarefa_resumo(row, user, "kanban_hoje")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with k3:
+    with k4:
         st.markdown("<div class='kanban-col'><div class='kanban-header'>✅ Concluídas hoje</div>", unsafe_allow_html=True)
         if concluidas_hoje.empty:
             st.info("Nada concluído hoje ainda.")
         else:
-            for _, row in concluidas_hoje.head(10).iterrows():
+            for _, row in concluidas_hoje.head(8).iterrows():
                 card_tarefa_resumo(row, user, "kanban_done")
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+    col_a, col_b = st.columns([1.1, 1])
+
+    with col_a:
+        st.markdown("<div class='panel'><div class='panel-title'>📊 Ranking operacional</div>", unsafe_allow_html=True)
+        ranking = ranking_operacional(data)
+        if ranking.empty:
+            st.info("Ainda não há responsáveis suficientes para ranking.")
+        else:
+            st.dataframe(
+                ranking.sort_values(["Atrasadas", "Pendentes", "Score"], ascending=[True, True, False]),
+                use_container_width=True,
+                hide_index=True
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_b:
+        st.markdown("<div class='panel'><div class='panel-title'>🚦 Gargalos rápidos</div>", unsafe_allow_html=True)
+        if atrasadas.empty and sem_resp.empty:
+            st.success("Nenhum gargalo relevante agora.")
+        else:
+            if not atrasadas.empty:
+                st.markdown("##### 🔴 Atrasadas")
+                for _, row in atrasadas.head(4).iterrows():
+                    card_tarefa_resumo(row, user, "gargalo_atrasadas")
+            if not sem_resp.empty:
+                st.markdown("##### 👤 Sem responsável")
+                for _, row in sem_resp.head(4).iterrows():
+                    card_tarefa_resumo(row, user, "gargalo_semresp")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='panel'><div class='panel-title'>🕘 Feed operacional</div>", unsafe_allow_html=True)
     feed = feed_operacional(data)
@@ -810,7 +1189,7 @@ def coordenacao_page(data, user):
             st.markdown(
                 f"""
                 <div class="feed-item">
-                    <b>{txt(row.get('Hora'))}</b> — {txt(row.get('Usuário'))} registrou 
+                    <b>{txt(row.get('Hora'))}</b> — {txt(row.get('Usuário'))} registrou
                     <b>{txt(row.get('Status'))}</b> em “{txt(row.get('Tarefa'))}”
                     <br><span style="color:#64748b;font-size:13px;">{txt(row.get('Data'))} {txt(row.get('Observação'))}</span>
                 </div>
@@ -822,6 +1201,15 @@ def coordenacao_page(data, user):
 
 def dashboard(data, user):
     header("Dashboard", "Visão geral das atividades")
+    st.markdown(
+        f"""
+        <div class="dashboard-hero">
+            <h1>Agenda operacional da equipe</h1>
+            <p>Olá, {user}. Acompanhe prioridades, pendências, tarefas do dia e produtividade em tempo real.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     tarefas = prepared_tasks(data)
 
     minhas = tarefas[tarefas.apply(lambda r: belongs_to_user(r, user), axis=1)]
@@ -1295,8 +1683,6 @@ def main():
         projetos_page(data, user)
     elif page == "Cadastro de tarefas":
         cadastro_page(data, user)
-    elif page == "Editar tarefas":
-        editar_tarefas_page(data, user)
     elif page == "Calendário":
         calendario_page(data, user)
     elif page == "Histórico":

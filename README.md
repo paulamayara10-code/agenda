@@ -50,3 +50,19 @@ V11 Coordenação:
 - Kanban operacional.
 - Feed de atividades com base no Histórico.
 - Backup automático antes de salvar alterações.
+
+
+V12 UI/UX:
+- Redesign visual mais forte.
+- Aba Coordenação garantida no menu.
+- Kanban com 4 colunas.
+- Cards mais modernos.
+- Sidebar mais profissional.
+- Painel executivo para apresentação à equipe.
+
+V13 Premium:
+- Oculta barra superior padrão do Streamlit.
+- Sidebar mais premium.
+- Hero no Dashboard.
+- Cards e métricas com visual mais moderno.
+- Data/hora em pill no topo.
