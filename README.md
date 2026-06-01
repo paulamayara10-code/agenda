@@ -23,3 +23,12 @@ Na primeira execução, se o `agenda.db` estiver vazio, o app importa automatica
 - database.py
 - migrar_excel_para_sqlite.py
 - requirements.txt
+
+
+V18.2 Projetos:
+- Projetos com progresso automático.
+- Projeto é concluído automaticamente quando 100% das tarefas vinculadas estiverem concluídas.
+- Cadastro de novos projetos pelo app.
+- Cards de projetos com tarefas vinculadas.
+- Comentários de projeto registrados no histórico.
+- Painel de projetos na Coordenação.

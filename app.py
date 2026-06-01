@@ -423,6 +423,7 @@ def departamento_page(user, departamento):
 
 def cadastro(user):
     header("Cadastro de tarefas", "Inclua novas atividades no sistema")
+    st.info("Ao escolher um Projeto no cadastro, esta tarefa será vinculada automaticamente ao projeto e contará no progresso.")
     deps = listar_departamentos() or ["Contas a Receber", "Contas a Pagar", "Contabilidade", "Controladoria", "Tesouraria"]
     usuarios = listar_usuarios()
     responsaveis = [""] + (usuarios["nome"].tolist() if not usuarios.empty else [])
@@ -545,13 +546,260 @@ def calendario(user):
     st.dataframe(concl, use_container_width=True, hide_index=True)
 
 
-def projetos(user):
-    header("Projetos", "Acompanhamento dos projetos")
-    df = listar_projetos()
-    if df.empty:
-        st.info("Nenhum projeto cadastrado.")
+
+def calcular_status_projeto(nome_projeto):
+    tarefas = listar_tarefas(ativas=True)
+
+    if tarefas.empty or not txt(nome_projeto):
+        return {
+            "total": 0,
+            "concluidas": 0,
+            "pendentes": 0,
+            "em_andamento": 0,
+            "atrasadas": 0,
+            "percentual": 0,
+            "status_calc": "Sem tarefas",
+        }
+
+    vinculadas = tarefas[tarefas["projeto"].astype(str).str.strip().str.lower() == txt(nome_projeto).lower()].copy()
+
+    if vinculadas.empty:
+        return {
+            "total": 0,
+            "concluidas": 0,
+            "pendentes": 0,
+            "em_andamento": 0,
+            "atrasadas": 0,
+            "percentual": 0,
+            "status_calc": "Sem tarefas",
+        }
+
+    vinculadas["classificacao"] = vinculadas.apply(lambda r: classificar(r, hoje()), axis=1)
+
+    total = len(vinculadas)
+    concluidas = len(vinculadas[vinculadas.apply(lambda r: is_concluida(r, hoje()), axis=1)])
+    pendentes = len(vinculadas[~vinculadas.apply(lambda r: is_concluida(r, hoje()), axis=1)])
+    em_andamento = len(vinculadas[vinculadas["status"].astype(str).str.lower() == "em andamento"])
+    atrasadas = len(vinculadas[vinculadas["classificacao"] == "Pendente anterior"])
+
+    percentual = round((concluidas / total) * 100, 1) if total else 0
+
+    if percentual >= 100:
+        status_calc = "Concluído"
+    elif atrasadas > 0:
+        status_calc = "Em risco"
+    elif em_andamento > 0:
+        status_calc = "Em andamento"
     else:
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        status_calc = "Aberto"
+
+    return {
+        "total": total,
+        "concluidas": concluidas,
+        "pendentes": pendentes,
+        "em_andamento": em_andamento,
+        "atrasadas": atrasadas,
+        "percentual": percentual,
+        "status_calc": status_calc,
+    }
+
+
+def projeto_card(row, user, prefix="proj"):
+    nome = txt(row.get("projeto"))
+    objetivo = txt(row.get("objetivo"))
+    departamento = txt(row.get("departamento"))
+    responsavel = txt(row.get("responsavel"))
+    prazo = txt(row.get("prazo_final"))
+    proxima = txt(row.get("proxima_etapa"))
+    observacao = txt(row.get("observacao"))
+
+    stats = calcular_status_projeto(nome)
+    pct = float(stats["percentual"])
+
+    cor = "#16a34a" if pct >= 100 else "#dc2626" if stats["atrasadas"] > 0 else "#f59e0b" if pct > 0 else "#2563eb"
+
+    with st.container(border=True):
+        c1, c2 = st.columns([4, 1.2])
+
+        with c1:
+            st.markdown(f"### 📁 {nome}")
+            if objetivo:
+                st.caption(objetivo)
+
+            tags = ""
+            tags += f"<span class='tag tag-blue'>{departamento or '-'}</span>"
+            tags += f"<span class='tag tag-purple'>{stats['status_calc']}</span>"
+            if responsavel:
+                tags += f"<span class='tag tag-green'>Responsável: {responsavel}</span>"
+            if prazo:
+                tags += f"<span class='tag tag-yellow'>Prazo: {prazo}</span>"
+            st.markdown(tags, unsafe_allow_html=True)
+
+            st.progress(min(max(pct / 100, 0), 1))
+            st.caption(
+                f"{stats['concluidas']} concluídas | {stats['pendentes']} pendentes | "
+                f"{stats['em_andamento']} em andamento | {stats['atrasadas']} atrasadas | "
+                f"{stats['total']} tarefas vinculadas"
+            )
+
+            if proxima:
+                st.info(f"Próxima etapa: {proxima}")
+            if observacao:
+                st.caption(f"Observação: {observacao}")
+
+        with c2:
+            metric_card("Progresso", f"{pct:.0f}%", stats["status_calc"], cor)
+
+        with st.expander("Ver tarefas vinculadas", expanded=False):
+            tarefas = listar_tarefas(ativas=True)
+            if tarefas.empty:
+                st.info("Nenhuma tarefa cadastrada.")
+            else:
+                vinculadas = tarefas[tarefas["projeto"].astype(str).str.strip().str.lower() == nome.lower()].copy()
+                if vinculadas.empty:
+                    st.info("Nenhuma tarefa vinculada a este projeto.")
+                else:
+                    for _, tarefa in vinculadas.iterrows():
+                        task_card(tarefa, user, f"{prefix}_{int(row.get('id'))}")
+
+        with st.expander("Comentário do projeto", expanded=False):
+            comentario = st.text_area("Registrar comentário do projeto", key=f"coment_proj_{prefix}_{int(row.get('id'))}")
+            if st.button("Salvar comentário", key=f"save_coment_proj_{prefix}_{int(row.get('id'))}"):
+                if comentario.strip():
+                    # usa histórico com id_tarefa vazio para registrar eventos do projeto
+                    from database import registrar_historico
+                    registrar_historico(None, f"Projeto: {nome}", user, "Comentário Projeto", comentario)
+                    st.success("Comentário registrado no histórico.")
+                    st.rerun()
+                else:
+                    st.warning("Digite um comentário.")
+
+
+def cadastrar_projeto_sqlite(dados):
+    from database import executar, agora_br
+    executar(
+        """
+        INSERT INTO projetos (
+            projeto, objetivo, departamento, responsavel, data_inicio, prazo_final,
+            status, percentual, proxima_etapa, observacao, ativo
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Sim')
+        """,
+        (
+            dados.get("projeto", ""),
+            dados.get("objetivo", ""),
+            dados.get("departamento", ""),
+            dados.get("responsavel", ""),
+            dados.get("data_inicio", ""),
+            dados.get("prazo_final", ""),
+            dados.get("status", "Em andamento"),
+            0,
+            dados.get("proxima_etapa", ""),
+            dados.get("observacao", ""),
+        )
+    )
+
+
+def projetos_resumo_df():
+    projetos_df = listar_projetos()
+    if projetos_df.empty:
+        return pd.DataFrame()
+
+    linhas = []
+    for _, row in projetos_df.iterrows():
+        nome = txt(row.get("projeto"))
+        stats = calcular_status_projeto(nome)
+        linhas.append({
+            "Projeto": nome,
+            "Departamento": txt(row.get("departamento")),
+            "Responsável": txt(row.get("responsavel")),
+            "Prazo": txt(row.get("prazo_final")),
+            "Status": stats["status_calc"],
+            "Progresso %": stats["percentual"],
+            "Tarefas": stats["total"],
+            "Concluídas": stats["concluidas"],
+            "Pendentes": stats["pendentes"],
+            "Em andamento": stats["em_andamento"],
+            "Atrasadas": stats["atrasadas"],
+            "Próxima etapa": txt(row.get("proxima_etapa")),
+        })
+    return pd.DataFrame(linhas)
+
+
+
+def projetos(user):
+    header("Projetos", "Gerenciamento integrado dos projetos e tarefas vinculadas")
+
+    projetos_df = listar_projetos()
+
+    with st.expander("➕ Cadastrar novo projeto", expanded=False):
+        deps = listar_departamentos() or ["Contas a Receber", "Contas a Pagar", "Contabilidade", "Controladoria", "Tesouraria"]
+        usuarios = listar_usuarios()
+        responsaveis = [""] + (usuarios["nome"].tolist() if not usuarios.empty else [])
+
+        with st.form("novo_projeto"):
+            c1, c2 = st.columns(2)
+            with c1:
+                projeto = st.text_input("Nome do projeto")
+                objetivo = st.text_area("Objetivo")
+                departamento = st.selectbox("Departamento", deps)
+                responsavel = st.selectbox("Responsável", responsaveis)
+            with c2:
+                data_inicio = st.date_input("Data início", value=hoje(), key="proj_data_inicio")
+                prazo_final = st.date_input("Prazo final", value=hoje(), key="proj_prazo_final")
+                proxima_etapa = st.text_input("Próxima etapa")
+                status = st.selectbox("Status", ["Em andamento", "Aberto", "Suspenso", "Concluído"])
+            observacao = st.text_area("Observação")
+            salvar = st.form_submit_button("Salvar projeto")
+
+        if salvar:
+            if not projeto:
+                st.error("Informe o nome do projeto.")
+            else:
+                cadastrar_projeto_sqlite({
+                    "projeto": projeto,
+                    "objetivo": objetivo,
+                    "departamento": normalizar_departamento(departamento),
+                    "responsavel": responsavel,
+                    "data_inicio": data_inicio.strftime("%d/%m/%Y"),
+                    "prazo_final": prazo_final.strftime("%d/%m/%Y"),
+                    "status": status,
+                    "proxima_etapa": proxima_etapa,
+                    "observacao": observacao,
+                })
+                st.success("Projeto cadastrado.")
+                st.rerun()
+
+    resumo = projetos_resumo_df()
+
+    if resumo.empty:
+        st.info("Nenhum projeto cadastrado.")
+        return
+
+    c1, c2, c3, c4 = st.columns(4)
+    total = len(resumo)
+    concluidos = len(resumo[resumo["Status"] == "Concluído"])
+    risco = len(resumo[resumo["Status"] == "Em risco"])
+    andamento = len(resumo[resumo["Status"].isin(["Em andamento", "Aberto"])])
+
+    with c1:
+        metric_card("Projetos", total, "Total", "#2563eb")
+    with c2:
+        metric_card("Em andamento", andamento, "Abertos", "#f59e0b")
+    with c3:
+        metric_card("Em risco", risco, "Com atrasos", "#dc2626")
+    with c4:
+        metric_card("Concluídos", concluidos, "100% tarefas", "#16a34a")
+
+    st.markdown("<div class='panel'><div class='panel-title'>📊 Resumo dos projetos</div>", unsafe_allow_html=True)
+    st.dataframe(resumo, use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='panel'><div class='panel-title'>📁 Projetos</div>", unsafe_allow_html=True)
+    for _, row in projetos_df.iterrows():
+        projeto_card(row, user, "projetos")
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 def historico():
