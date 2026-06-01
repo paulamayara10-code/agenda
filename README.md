@@ -1,34 +1,25 @@
-# Agenda Operacional V18 SQLite
+# Agenda Operacional V18.1 SQLite Auto
 
 ## Como usar
 
-1. Coloque `Agenda.xlsx` na mesma pasta, se quiser migrar sua base antiga.
-2. Instale dependências:
-
-```bash
-pip install -r requirements.txt
-```
-
-3. Migre o Excel para SQLite uma única vez:
-
-```bash
-python migrar_excel_para_sqlite.py
-```
-
-4. Rode o app:
+1. Coloque `Agenda.xlsx` na mesma pasta do `app.py`.
+2. Suba/rode o app normalmente:
 
 ```bash
 streamlit run app.py
 ```
 
+Na primeira execução, se o `agenda.db` estiver vazio, o app importa automaticamente o `Agenda.xlsx`.
+
+## Importante
+
+- O SQLite (`agenda.db`) vira a base principal.
+- O Excel passa a ser usado para migração inicial e exportação.
+- Se precisar forçar nova migração, use o menu **Admin SQLite**.
+
 ## Arquivos
 
-- app.py: aplicativo Streamlit
-- database.py: camada SQLite
-- migrar_excel_para_sqlite.py: migração do Excel para agenda.db
-- agenda.db: banco criado automaticamente
+- app.py
+- database.py
+- migrar_excel_para_sqlite.py
 - requirements.txt
-
-## Observação
-
-O SQLite passa a ser a base principal. O Excel fica como importação/exportação.

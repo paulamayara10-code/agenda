@@ -2,25 +2,20 @@
 # -*- coding: utf-8 -*-
 import sqlite3
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 import pandas as pd
-
 
 DB_PATH = "agenda.db"
 
 
 def conectar(db_path=DB_PATH):
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def agora_br():
     return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-
-def hoje_br():
-    return datetime.now().strftime("%d/%m/%Y")
 
 
 def init_db(db_path=DB_PATH):
@@ -124,6 +119,16 @@ def consultar_df(query, params=(), db_path=DB_PATH):
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
+
+
+def banco_tem_dados(db_path=DB_PATH):
+    init_db(db_path)
+    conn = conectar(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM tarefas")
+    qtd = cur.fetchone()[0]
+    conn.close()
+    return qtd > 0
 
 
 def registrar_historico(id_tarefa, tarefa, usuario, status, observacao="", db_path=DB_PATH):
