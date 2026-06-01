@@ -702,10 +702,6 @@ section.main {
     margin-left: 0 !important;
 }
 
-
-.tag-orange { background:#ffedd5; color:#c2410c; }
-.sla-orange { border-left: 8px solid #f97316 !important; }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -1033,9 +1029,6 @@ def sla_status(row, ref_date=None):
     if done(row, ref_date):
         return "Concluída", "sla-gray", "Concluída"
 
-    if txt(row.get("Status")).lower() in ["em andamento", "andamento", "iniciada", "iniciado"]:
-        return "Em andamento", "sla-green", "Tarefa iniciada"
-
     prioridade = txt(row.get("Prioridade")).lower()
     if prioridade in ["crítica", "critica"]:
         return "Crítica", "sla-purple", "Prioridade crítica"
@@ -1199,7 +1192,7 @@ def sidebar(data):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 2.7.0 Status e Observações")
+    st.sidebar.caption("Versão 2.7.1 Corrigida")
     return user, page, departamentos
 
 
@@ -1209,24 +1202,6 @@ def prepared_tasks(data):
     tarefas["Departamento"] = tarefas["Departamento"].apply(normalizar_departamento)
     tarefas["Classificacao"] = tarefas.apply(lambda r: classify(r, date.today()), axis=1)
     return tarefas
-
-
-
-def registrar_observacao_tarefa(data, id_tarefa, tarefa, usuario, observacao):
-    observacao = txt(observacao)
-    if not observacao:
-        return False
-
-    registrar_historico(
-        data,
-        id_tarefa,
-        tarefa,
-        usuario,
-        "Observação",
-        observacao
-    )
-    save_data(get_path(), data)
-    return True
 
 
 
@@ -1248,15 +1223,13 @@ def ultima_observacao_tarefa(data, id_tarefa):
     obs["Ordem"] = pd.to_numeric(obs["ID Histórico"], errors="coerce")
     obs = obs.sort_values("Ordem", ascending=False)
     linha = obs.iloc[0]
-
     return f"{txt(linha.get('Data'))} {txt(linha.get('Hora'))} - {txt(linha.get('Usuário'))}: {txt(linha.get('Observação'))}"
 
 
 def marcar_em_andamento(data, id_tarefa, tarefa, usuario):
-    tarefas = ensure_cols(data["Tarefas"], ABAS["Tarefas"])
-    tarefas = tarefas.astype("object")
-
+    tarefas = ensure_cols(data["Tarefas"], ABAS["Tarefas"]).astype("object")
     idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == str(id_tarefa).strip()].tolist()
+
     if not idxs:
         return False
 
@@ -1267,6 +1240,24 @@ def marcar_em_andamento(data, id_tarefa, tarefa, usuario):
 
     data["Tarefas"] = tarefas
     registrar_historico(data, id_tarefa, tarefa, usuario, "Em andamento", "Tarefa iniciada pelo usuário")
+    save_data(get_path(), data)
+    return True
+
+
+
+def registrar_observacao_tarefa(data, id_tarefa, tarefa, usuario, observacao):
+    observacao = txt(observacao)
+    if not observacao:
+        return False
+
+    registrar_historico(
+        data,
+        id_tarefa,
+        tarefa,
+        usuario,
+        "Observação",
+        observacao
+    )
     save_data(get_path(), data)
     return True
 
@@ -1308,6 +1299,7 @@ def task_card(row, data, user, prefix):
 
             st.markdown(tags, unsafe_allow_html=True)
             st.caption(f"Responsável: {resp or '-'} | Periodicidade: {periodicidade or '-'}")
+
             ultima_obs = ultima_observacao_tarefa(data, idt)
             if ultima_obs:
                 st.info(f"Última observação: {ultima_obs}")
@@ -1327,6 +1319,7 @@ def task_card(row, data, user, prefix):
                         st.error("Tarefa não localizada no Excel.")
             else:
                 status_atual = txt(row.get("Status")).lower()
+
                 if status_atual not in ["em andamento", "andamento", "iniciada", "iniciado"]:
                     if st.button("▶️ Iniciar", key=f"start_{chave_base}"):
                         ok_start = marcar_em_andamento(data, idt, titulo, user)
@@ -1346,6 +1339,24 @@ def task_card(row, data, user, prefix):
                     else:
                         st.error("Tarefa não localizada no Excel.")
 
+
+
+
+        with st.expander("💬 Observações / justificativa", expanded=False):
+            obs_key = f"obs_{unique_key(prefix, idt, titulo, user)}"
+            observacao = st.text_area(
+                "Registrar observação nesta tarefa",
+                placeholder="Ex.: iniciado, aguardando retorno do banco, faltou documento, não concluído por...",
+                key=obs_key
+            )
+
+            if st.button("Salvar observação", key=f"save_obs_{unique_key(prefix, idt, titulo, user)}"):
+                ok_obs = registrar_observacao_tarefa(data, idt, titulo, user, observacao)
+                if ok_obs:
+                    st.success("Observação registrada no histórico.")
+                    st.rerun()
+                else:
+                    st.warning("Digite uma observação antes de salvar.")
 
 
 
@@ -1470,23 +1481,6 @@ def coordenacao_page(data, user):
                 unsafe_allow_html=True
             )
     st.markdown("</div>", unsafe_allow_html=True)
-
-
-        with st.expander("💬 Observações / justificativa", expanded=False):
-            obs_key = f"obs_{unique_key(prefix, idt, titulo, user)}"
-            observacao = st.text_area(
-                "Registrar observação nesta tarefa",
-                placeholder="Ex.: iniciado, aguardando retorno do banco, faltou documento, não concluído por...",
-                key=obs_key
-            )
-
-            if st.button("Salvar observação", key=f"save_obs_{unique_key(prefix, idt, titulo, user)}"):
-                ok_obs = registrar_observacao_tarefa(data, idt, titulo, user, observacao)
-                if ok_obs:
-                    st.success("Observação registrada no histórico.")
-                    st.rerun()
-                else:
-                    st.warning("Digite uma observação antes de salvar.")
 
 
 def dashboard(data, user):
