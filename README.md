@@ -80,3 +80,19 @@ V15:
 - Reduz largura da sidebar para 240px.
 - Desloca área principal corretamente para a direita.
 - Ajusta largura útil dos cards e painéis.
+
+
+V16 Observações e Segurança:
+- Campo de observações/justificativa dentro de cada tarefa.
+- Observações ficam registradas no Histórico.
+- Lock simples de gravação para reduzir conflito com múltiplos usuários.
+- Backup automático preservado antes de salvar.
+- Tela "Tarefas arquivadas" para consultar e reativar tarefas.
+- Tarefas não são excluídas pelo sistema; apenas arquivadas.
+
+
+V17 Status e Observações:
+- Botão ▶️ Iniciar para marcar tarefa como "Em andamento".
+- Última observação aparece dentro do card da tarefa.
+- Nova aba "Pendências com observação".
+- Tarefas cadastradas manualmente seguem a mesma lógica das demais: departamento, responsável, periodicidade, histórico, backup e arquivamento.

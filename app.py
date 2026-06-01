@@ -5,6 +5,7 @@ from datetime import datetime, date, time
 from zoneinfo import ZoneInfo
 import hashlib
 import shutil
+import time as time_module
 
 import pandas as pd
 import streamlit as st
@@ -701,6 +702,10 @@ section.main {
     margin-left: 0 !important;
 }
 
+
+.tag-orange { background:#ffedd5; color:#c2410c; }
+.sla-orange { border-left: 8px solid #f97316 !important; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -804,6 +809,9 @@ def classify(row, ref_date=None):
             return "Concluída hoje"
         return "Concluída na data"
 
+    if txt(row.get("Status")).lower() in ["em andamento", "andamento", "iniciada", "iniciado"]:
+        return "Em andamento"
+
     if not is_active(row.get("Ativa", "Sim")):
         return "Arquivada"
 
@@ -893,16 +901,53 @@ def load_data(path):
     return data
 
 
+
+def adquirir_lock(path, timeout=10):
+    lock_path = Path(str(path) + ".lock")
+    inicio = time_module.time()
+
+    while lock_path.exists():
+        if time_module.time() - inicio > timeout:
+            try:
+                lock_path.unlink()
+            except Exception:
+                pass
+            break
+        time_module.sleep(0.2)
+
+    try:
+        lock_path.write_text(str(agora_brasilia()), encoding="utf-8")
+    except Exception:
+        pass
+
+    return lock_path
+
+
+def liberar_lock(lock_path):
+    try:
+        if lock_path and Path(lock_path).exists():
+            Path(lock_path).unlink()
+    except Exception:
+        pass
+
+
+
 def save_data(path, data):
     path = Path(path)
-    criar_backup_automatico(path)
-    with pd.ExcelWriter(path, engine="openpyxl", mode="w") as writer:
-        for aba, cols in ABAS.items():
-            df = ensure_cols(data.get(aba, pd.DataFrame(columns=cols)), cols)
-            df = df.fillna("")
-            df.to_excel(writer, sheet_name=aba, index=False)
-    st.cache_data.clear()
+    lock_path = adquirir_lock(path)
 
+    try:
+        criar_backup_automatico(path)
+
+        with pd.ExcelWriter(path, engine="openpyxl", mode="w") as writer:
+            for aba, cols in ABAS.items():
+                df = ensure_cols(data.get(aba, pd.DataFrame(columns=cols)), cols)
+                df = df.fillna("")
+                df.to_excel(writer, sheet_name=aba, index=False)
+
+        st.cache_data.clear()
+    finally:
+        liberar_lock(lock_path)
 
 def get_path():
     if "excel_path" not in st.session_state:
@@ -987,6 +1032,9 @@ def sla_status(row, ref_date=None):
 
     if done(row, ref_date):
         return "Concluída", "sla-gray", "Concluída"
+
+    if txt(row.get("Status")).lower() in ["em andamento", "andamento", "iniciada", "iniciado"]:
+        return "Em andamento", "sla-green", "Tarefa iniciada"
 
     prioridade = txt(row.get("Prioridade")).lower()
     if prioridade in ["crítica", "critica"]:
@@ -1140,6 +1188,7 @@ def sidebar(data):
         "Projetos",
         "Calendário",
         "Cadastro de tarefas",
+        "Tarefas arquivadas",
         "Histórico"
     ]
 
@@ -1150,7 +1199,7 @@ def sidebar(data):
         st.cache_data.clear()
         st.rerun()
 
-    st.sidebar.caption("Versão 2.5.0 Sidebar ajustada")
+    st.sidebar.caption("Versão 2.7.0 Status e Observações")
     return user, page, departamentos
 
 
@@ -1160,6 +1209,67 @@ def prepared_tasks(data):
     tarefas["Departamento"] = tarefas["Departamento"].apply(normalizar_departamento)
     tarefas["Classificacao"] = tarefas.apply(lambda r: classify(r, date.today()), axis=1)
     return tarefas
+
+
+
+def registrar_observacao_tarefa(data, id_tarefa, tarefa, usuario, observacao):
+    observacao = txt(observacao)
+    if not observacao:
+        return False
+
+    registrar_historico(
+        data,
+        id_tarefa,
+        tarefa,
+        usuario,
+        "Observação",
+        observacao
+    )
+    save_data(get_path(), data)
+    return True
+
+
+
+
+def ultima_observacao_tarefa(data, id_tarefa):
+    hist = ensure_cols(data["Historico"], ABAS["Historico"]).copy()
+    if hist.empty:
+        return ""
+
+    filtro = (
+        (hist["ID Tarefa"].astype(str).str.strip() == str(id_tarefa).strip())
+        & (hist["Status"].astype(str).str.lower() == "observação")
+    )
+
+    obs = hist[filtro].copy()
+    if obs.empty:
+        return ""
+
+    obs["Ordem"] = pd.to_numeric(obs["ID Histórico"], errors="coerce")
+    obs = obs.sort_values("Ordem", ascending=False)
+    linha = obs.iloc[0]
+
+    return f"{txt(linha.get('Data'))} {txt(linha.get('Hora'))} - {txt(linha.get('Usuário'))}: {txt(linha.get('Observação'))}"
+
+
+def marcar_em_andamento(data, id_tarefa, tarefa, usuario):
+    tarefas = ensure_cols(data["Tarefas"], ABAS["Tarefas"])
+    tarefas = tarefas.astype("object")
+
+    idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == str(id_tarefa).strip()].tolist()
+    if not idxs:
+        return False
+
+    idx = idxs[0]
+    tarefas.at[idx, "Status"] = "Em andamento"
+    tarefas.at[idx, "Concluído Por"] = ""
+    tarefas.at[idx, "Data Conclusão"] = ""
+
+    data["Tarefas"] = tarefas
+    registrar_historico(data, id_tarefa, tarefa, usuario, "Em andamento", "Tarefa iniciada pelo usuário")
+    save_data(get_path(), data)
+    return True
+
 
 
 def task_card(row, data, user, prefix):
@@ -1198,6 +1308,9 @@ def task_card(row, data, user, prefix):
 
             st.markdown(tags, unsafe_allow_html=True)
             st.caption(f"Responsável: {resp or '-'} | Periodicidade: {periodicidade or '-'}")
+            ultima_obs = ultima_observacao_tarefa(data, idt)
+            if ultima_obs:
+                st.info(f"Última observação: {ultima_obs}")
 
         with c2:
             chave_base = unique_key(prefix, idt, titulo, resp, depto)
@@ -1213,6 +1326,16 @@ def task_card(row, data, user, prefix):
                     else:
                         st.error("Tarefa não localizada no Excel.")
             else:
+                status_atual = txt(row.get("Status")).lower()
+                if status_atual not in ["em andamento", "andamento", "iniciada", "iniciado"]:
+                    if st.button("▶️ Iniciar", key=f"start_{chave_base}"):
+                        ok_start = marcar_em_andamento(data, idt, titulo, user)
+                        if ok_start:
+                            st.success("Tarefa marcada como em andamento.")
+                            st.rerun()
+                        else:
+                            st.error("Tarefa não localizada no Excel.")
+
                 if st.button("✅ Concluir", key=f"done_{chave_base}"):
                     ok = atualizar_status_tarefa(data, idt, "Concluída", user)
                     if ok:
@@ -1349,6 +1472,23 @@ def coordenacao_page(data, user):
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+        with st.expander("💬 Observações / justificativa", expanded=False):
+            obs_key = f"obs_{unique_key(prefix, idt, titulo, user)}"
+            observacao = st.text_area(
+                "Registrar observação nesta tarefa",
+                placeholder="Ex.: iniciado, aguardando retorno do banco, faltou documento, não concluído por...",
+                key=obs_key
+            )
+
+            if st.button("Salvar observação", key=f"save_obs_{unique_key(prefix, idt, titulo, user)}"):
+                ok_obs = registrar_observacao_tarefa(data, idt, titulo, user, observacao)
+                if ok_obs:
+                    st.success("Observação registrada no histórico.")
+                    st.rerun()
+                else:
+                    st.warning("Digite uma observação antes de salvar.")
+
+
 def dashboard(data, user):
     header("Dashboard", "Visão geral das atividades")
     st.markdown(
@@ -1394,7 +1534,7 @@ def dashboard(data, user):
         resps = ["Todos"] + sorted([x for x in tarefas["Responsavel"].dropna().astype(str).unique() if x])
         resp = st.selectbox("Responsável", resps)
     with f4:
-        status = st.selectbox("Status", ["Todos", "Pendente anterior", "Hoje", "Concluída hoje", "Concluída", "Futura"])
+        status = st.selectbox("Status", ["Todos", "Pendente anterior", "Hoje", "Em andamento", "Concluída hoje", "Concluída", "Futura"])
 
     filtradas = tarefas.copy()
 
@@ -1806,6 +1946,86 @@ def calendario_page(data, user):
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+
+
+def pendencias_observacao_page(data, user):
+    header("Pendências com observação", "Tarefas abertas que possuem justificativas ou comentários")
+
+    tarefas = prepared_tasks(data)
+    abertas = tarefas[~tarefas.apply(lambda r: done(r, date.today()), axis=1)].copy()
+
+    linhas = []
+    for _, row in abertas.iterrows():
+        obs = ultima_observacao_tarefa(data, row.get("ID"))
+        if obs:
+            r = row.copy()
+            r["Última Observação"] = obs
+            linhas.append(r)
+
+    if not linhas:
+        st.success("Nenhuma pendência aberta com observação registrada.")
+        return
+
+    df = pd.DataFrame(linhas)
+
+    st.dataframe(
+        df[["ID", "Tarefa", "Departamento", "Responsavel", "Prioridade", "Status", "Última Observação"]],
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.divider()
+    st.subheader("Detalhamento em cards")
+
+    for _, row in df.iterrows():
+        task_card(row, data, user, "pend_obs")
+
+
+
+
+def tarefas_arquivadas_page(data, user):
+    header("Tarefas arquivadas", "Consulta e recuperação de tarefas arquivadas")
+
+    tarefas = ensure_cols(data["Tarefas"], ABAS["Tarefas"])
+    arquivadas = tarefas[~tarefas["Ativa"].apply(is_active)].copy()
+
+    if arquivadas.empty:
+        st.info("Nenhuma tarefa arquivada.")
+        return
+
+    st.warning("Tarefas arquivadas não são excluídas. Elas ficam aqui para auditoria e podem ser reativadas.")
+
+    for _, row in arquivadas.iterrows():
+        idt = txt(row.get("ID"))
+        titulo = txt(row.get("Tarefa"))
+        depto = txt(row.get("Departamento"))
+        resp = txt(row.get("Responsavel"))
+
+        with st.container(border=True):
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                st.markdown(f"### {titulo}")
+                st.caption(f"Departamento: {depto or '-'} | Responsável: {resp or '-'}")
+                if txt(row.get("Observação")):
+                    st.write(txt(row.get("Observação")))
+
+            with c2:
+                if st.button("Reativar", key=f"reativar_{idt}"):
+                    idxs = tarefas.index[tarefas["ID"].astype(str).str.strip() == str(idt).strip()].tolist()
+                    if idxs:
+                        idx = idxs[0]
+                        tarefas = tarefas.astype("object")
+                        tarefas.at[idx, "Ativa"] = "Sim"
+                        tarefas.at[idx, "Status"] = "Pendente"
+                        data["Tarefas"] = tarefas
+                        registrar_historico(data, idt, titulo, user, "Reativada", "Tarefa reativada pelo app")
+                        save_data(get_path(), data)
+                        st.success("Tarefa reativada.")
+                        st.rerun()
+
+
+
+
 def historico_page(data):
     header("Histórico", "Registro das conclusões")
     hist = ensure_cols(data["Historico"], ABAS["Historico"])
@@ -1833,6 +2053,8 @@ def main():
         projetos_page(data, user)
     elif page == "Cadastro de tarefas":
         cadastro_page(data, user)
+    elif page == "Tarefas arquivadas":
+        tarefas_arquivadas_page(data, user)
     elif page == "Calendário":
         calendario_page(data, user)
     elif page == "Histórico":
