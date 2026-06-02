@@ -32,3 +32,11 @@ V18.2 Projetos:
 - Cards de projetos com tarefas vinculadas.
 - Comentários de projeto registrados no histórico.
 - Painel de projetos na Coordenação.
+
+
+V18.3 Periodicidade:
+- Corrige leitura de tarefas diárias.
+- Reconhece Diario, Diário, Diaria, Diária e variações.
+- Tarefas diárias aparecem todos os dias enquanto não forem concluídas no dia.
+- Tarefas sem data de início não somem.
+- Admin SQLite mostra diagnóstico de periodicidade.

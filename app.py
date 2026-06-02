@@ -3,6 +3,7 @@
 from datetime import datetime, date
 from pathlib import Path
 import shutil
+import unicodedata
 
 import pandas as pd
 import streamlit as st
@@ -98,6 +99,22 @@ def normalizar_departamento(v):
     return mapa.get(" ".join(t.lower().split()), t.strip().title())
 
 
+def normalizar_periodicidade(v):
+    t = txt(v).lower().strip()
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode("ascii")
+    t = " ".join(t.split())
+
+    if t in ["diario", "diaria", "todo dia", "todos os dias", "dia", "daily", ""]:
+        return "diario"
+    if t in ["semanal", "semana", "weekly", "toda semana"]:
+        return "semanal"
+    if t in ["mensal", "mes", "mensalmente", "monthly"]:
+        return "mensal"
+    if t in ["unica", "unico", "pontual", "uma vez"]:
+        return "unica"
+    return t
+
+
 def parse_data(v):
     if not txt(v):
         return None
@@ -125,43 +142,76 @@ def is_concluida(row, ref=None):
 
 
 def periodic_on_date(row, ref=None):
+    """
+    Regra robusta para agenda do dia:
+    - Tarefa diária aparece todos os dias se estiver ativa e não concluída no dia.
+    - Tarefa sem data de início é considerada ativa.
+    - Semanal/mensal respeitam a data de início.
+    - Única aparece na data de início e, se não concluída, fica como pendente anterior.
+    """
     if ref is None:
         ref = hoje()
+
     if is_concluida(row, ref):
         return False
-    data_ini = parse_data(row.get("data_inicio"))
-    per = txt(row.get("periodicidade")).lower()
-    if data_ini and data_ini > ref:
-        return False
-    if per in ["diario", "diária", "diaria", "diário", "todo dia", ""]:
-        return True
-    if per in ["semanal", "semana"]:
-        return True if not data_ini else (ref - data_ini).days % 7 == 0
-    if per in ["mensal", "mês", "mes"]:
-        return True if not data_ini else ref.day == data_ini.day
-    if per in ["unica", "única", "pontual"]:
-        return data_ini == ref
-    return True
 
+    data_ini = parse_data(row.get("data_inicio"))
+    per = normalizar_periodicidade(row.get("periodicidade"))
+
+    if per == "diario":
+        if data_ini and data_ini > ref:
+            return False
+        return True
+
+    if not data_ini:
+        return True
+
+    if data_ini > ref:
+        return False
+
+    if per == "semanal":
+        return (ref - data_ini).days % 7 == 0
+
+    if per == "mensal":
+        return ref.day == data_ini.day
+
+    if per == "unica":
+        return data_ini == ref
+
+    return True
 
 def classificar(row, ref=None):
     if ref is None:
         ref = hoje()
+
     if is_concluida(row, ref):
         return "Concluída hoje" if ref == hoje() else "Concluída na data"
+
     status = txt(row.get("status")).lower()
     if status in ["em andamento", "andamento", "iniciada", "iniciado"]:
         return "Em andamento"
+
     data_ini = parse_data(row.get("data_inicio"))
-    per = txt(row.get("periodicidade")).lower()
-    if data_ini and data_ini > ref:
+    per = normalizar_periodicidade(row.get("periodicidade"))
+
+    if per == "diario":
+        if data_ini and data_ini > ref:
+            return "Futura"
+        return "Hoje" if ref == hoje() else "Prevista"
+
+    if not data_ini:
+        return "Hoje" if ref == hoje() else "Prevista"
+
+    if data_ini > ref:
         return "Futura"
-    if data_ini and data_ini < ref and per in ["unica", "única", "pontual", ""]:
+
+    if data_ini < ref and per == "unica":
         return "Pendente anterior"
+
     if periodic_on_date(row, ref):
         return "Hoje" if ref == hoje() else "Prevista"
-    return "Futura"
 
+    return "Futura"
 
 def pertence_usuario(row, user):
     resp = txt(row.get("responsavel")).lower()
@@ -829,6 +879,18 @@ def admin_sqlite():
     st.write(f"Tarefas no banco: **{len(tarefas)}**")
     st.write(f"Usuários no banco: **{len(usuarios)}**")
     st.write(f"Projetos no banco: **{len(projetos_df)}**")
+    st.divider()
+    st.subheader("Diagnóstico de periodicidade")
+    if not tarefas.empty and "periodicidade" in tarefas.columns:
+        diag = tarefas["periodicidade"].fillna("").astype(str).value_counts().reset_index()
+        diag.columns = ["Periodicidade", "Quantidade"]
+        st.dataframe(diag, use_container_width=True, hide_index=True)
+
+        tarefas_diag = tarefas.copy()
+        tarefas_diag["periodicidade_normalizada"] = tarefas_diag["periodicidade"].apply(normalizar_periodicidade)
+        tarefas_diag["aparece_hoje"] = tarefas_diag.apply(lambda r: periodic_on_date(r, hoje()), axis=1)
+        st.write(f"Tarefas que devem aparecer hoje: **{int(tarefas_diag['aparece_hoje'].sum())}**")
+
     if st.button("Forçar migração do Agenda.xlsx"):
         ok, msg = migrar_excel_para_sqlite("Agenda.xlsx", DB_PATH, somente_se_vazio=False)
         st.success(msg if ok else msg)
