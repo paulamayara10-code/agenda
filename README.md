@@ -40,3 +40,11 @@ V18.3 Periodicidade:
 - Tarefas diárias aparecem todos os dias enquanto não forem concluídas no dia.
 - Tarefas sem data de início não somem.
 - Admin SQLite mostra diagnóstico de periodicidade.
+
+
+V18.4 Restaurada e Segura:
+- Base agenda.db restaurada: 44 tarefas, 3 projetos, 5 usuários e 28 históricos.
+- Preservadas as 6 tarefas criadas por Claudia em 02/06.
+- Preservadas as 4 conclusões de Claudia em 03/06.
+- Removidas duplicidades causadas por reimportação.
+- Migração forçada passa a rodar apenas se o banco estiver vazio, evitando duplicação.

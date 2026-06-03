@@ -891,8 +891,9 @@ def admin_sqlite():
         tarefas_diag["aparece_hoje"] = tarefas_diag.apply(lambda r: periodic_on_date(r, hoje()), axis=1)
         st.write(f"Tarefas que devem aparecer hoje: **{int(tarefas_diag['aparece_hoje'].sum())}**")
 
-    if st.button("Forçar migração do Agenda.xlsx"):
-        ok, msg = migrar_excel_para_sqlite("Agenda.xlsx", DB_PATH, somente_se_vazio=False)
+    st.warning("A migração automática está bloqueada quando o banco já possui dados, para evitar duplicações.")
+    if st.button("Migrar Agenda.xlsx apenas se o banco estiver vazio"):
+        ok, msg = migrar_excel_para_sqlite("Agenda.xlsx", DB_PATH, somente_se_vazio=True)
         st.success(msg if ok else msg)
         st.rerun()
 
