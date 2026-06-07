@@ -1,6 +1,6 @@
 
 # -*- coding: utf-8 -*-
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 import shutil
 import unicodedata
@@ -75,6 +75,11 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] * { color: #0f172a !
 .tag-orange { background:#ffedd5; color:#c2410c; }
 .tag-gray { background:#f1f5f9; color:#475569; }
 .stButton > button { border-radius: 14px; font-weight: 800; min-height: 42px; }
+
+.data-global-note {
+    font-size: 13px;
+    color: #64748b;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -128,6 +133,16 @@ def hoje():
     return date.today()
 
 
+def eh_dia_util(data_ref):
+    return data_ref.weekday() < 5
+
+
+def data_referencia_global():
+    if "data_referencia" not in st.session_state:
+        st.session_state["data_referencia"] = hoje()
+    return st.session_state["data_referencia"]
+
+
 def is_concluida(row, ref=None):
     if ref is None:
         ref = hoje()
@@ -143,16 +158,19 @@ def is_concluida(row, ref=None):
 
 def periodic_on_date(row, ref=None):
     """
-    Regra robusta para agenda do dia:
-    - Tarefa diária aparece todos os dias se estiver ativa e não concluída no dia.
-    - Tarefa sem data de início é considerada ativa.
+    Regra com dias úteis:
+    - Tarefa diária aparece apenas em dias úteis.
+    - Tarefa sem data de início é considerada ativa em dias úteis.
     - Semanal/mensal respeitam a data de início.
-    - Única aparece na data de início e, se não concluída, fica como pendente anterior.
+    - Única em fim de semana aparece no próximo dia útil.
     """
     if ref is None:
-        ref = hoje()
+        ref = data_referencia_global()
 
     if is_concluida(row, ref):
+        return False
+
+    if not eh_dia_util(ref):
         return False
 
     data_ini = parse_data(row.get("data_inicio"))
@@ -176,20 +194,26 @@ def periodic_on_date(row, ref=None):
         return ref.day == data_ini.day
 
     if per == "unica":
-        return data_ini == ref
+        data_exec = data_ini
+        while not eh_dia_util(data_exec):
+            data_exec = data_exec + timedelta(days=1)
+        return data_exec == ref
 
     return True
 
 def classificar(row, ref=None):
     if ref is None:
-        ref = hoje()
+        ref = data_referencia_global()
 
     if is_concluida(row, ref):
-        return "Concluída hoje" if ref == hoje() else "Concluída na data"
+        return "Concluída na data"
 
     status = txt(row.get("status")).lower()
     if status in ["em andamento", "andamento", "iniciada", "iniciado"]:
         return "Em andamento"
+
+    if not eh_dia_util(ref):
+        return "Fim de semana"
 
     data_ini = parse_data(row.get("data_inicio"))
     per = normalizar_periodicidade(row.get("periodicidade"))
@@ -237,12 +261,14 @@ def ultima_observacao(id_tarefa):
     return f"{linha.get('data','')} {linha.get('hora','')} - {linha.get('usuario','')}: {linha.get('observacao','')}"
 
 
-def preparar_tarefas():
+def preparar_tarefas(ref=None):
+    if ref is None:
+        ref = data_referencia_global()
     df = listar_tarefas(ativas=True)
     if df.empty:
         return df
     df["departamento"] = df["departamento"].apply(normalizar_departamento)
-    df["classificacao"] = df.apply(lambda r: classificar(r, hoje()), axis=1)
+    df["classificacao"] = df.apply(lambda r: classificar(r, ref), axis=1)
     return df
 
 
@@ -263,6 +289,59 @@ def header(title, subtitle):
         st.markdown(f"<div class='app-subtitle'>{subtitle}</div>", unsafe_allow_html=True)
     with col2:
         st.markdown(f"<div style='text-align:right;font-weight:800;color:#0f172a;'>📅 {datetime.now().strftime('%d/%m/%Y • %H:%M')}</div>", unsafe_allow_html=True)
+
+
+def seletor_data_referencia():
+    """
+    Barra global de data.
+    Todas as telas usam a mesma data salva no session_state.
+    """
+    if "data_referencia" not in st.session_state:
+        st.session_state["data_referencia"] = hoje()
+
+    st.markdown("<div class='panel' style='padding:16px 20px; margin-top:0;'>", unsafe_allow_html=True)
+
+    c0, c1, c2, c3, c4 = st.columns([1.1, 1.2, 0.8, 0.8, 3])
+
+    with c0:
+        st.markdown("#### 📅 Data global")
+
+    with c1:
+        data_sel = st.date_input(
+            "Data de referência",
+            value=st.session_state["data_referencia"],
+            label_visibility="collapsed",
+            key="data_global_input"
+        )
+        st.session_state["data_referencia"] = data_sel
+
+    with c2:
+        if st.button("◀ Dia anterior", use_container_width=True):
+            st.session_state["data_referencia"] = st.session_state["data_referencia"] - timedelta(days=1)
+            st.rerun()
+
+    with c3:
+        if st.button("Hoje", use_container_width=True):
+            st.session_state["data_referencia"] = hoje()
+            st.rerun()
+
+    with c4:
+        c4a, c4b = st.columns([0.9, 2])
+        with c4a:
+            if st.button("Próximo dia ▶", use_container_width=True):
+                st.session_state["data_referencia"] = st.session_state["data_referencia"] + timedelta(days=1)
+                st.rerun()
+        with c4b:
+            data_ref = st.session_state["data_referencia"]
+            if eh_dia_util(data_ref):
+                st.success(f"Dia útil selecionado: {data_ref.strftime('%d/%m/%Y')}")
+            else:
+                st.warning("Sábado/domingo selecionado. Não gera tarefas recorrentes.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    return st.session_state["data_referencia"]
+
 
 
 def sidebar():
@@ -286,6 +365,11 @@ def sidebar():
     return user, page, deps
 
 
+def app_frame(title, subtitle):
+    header(title, subtitle)
+    return seletor_data_referencia()
+
+
 def task_card(row, user, prefix="task"):
     idt = int(row.get("id"))
     titulo = txt(row.get("tarefa"))
@@ -297,7 +381,7 @@ def task_card(row, user, prefix="task"):
     periodicidade = txt(row.get("periodicidade"))
     status = txt(row.get("status"))
     minha = pertence_usuario(row, user)
-    done = is_concluida(row, hoje())
+    done = is_concluida(row, data_referencia_global())
     with st.container(border=True):
         c1, c2 = st.columns([4.6, 1.35])
         with c1:
@@ -346,7 +430,7 @@ def task_card(row, user, prefix="task"):
 
 
 def dashboard(user):
-    header("Dashboard", "Visão geral das atividades")
+    ref = app_frame("Dashboard", "Visão geral das atividades")
     if ok_migracao and msg_migracao:
         st.success(msg_migracao)
     st.markdown(f"""
@@ -355,13 +439,13 @@ def dashboard(user):
             <p>Olá, {user}. Acompanhe prioridades, pendências e tarefas do dia em tempo real.</p>
         </div>
     """, unsafe_allow_html=True)
-    tarefas = preparar_tarefas()
+    tarefas = preparar_tarefas(ref)
     if tarefas.empty:
         st.info("Nenhuma tarefa cadastrada ainda. Verifique se o Agenda.xlsx está na mesma pasta do app.")
         return
     minhas = tarefas[tarefas.apply(lambda r: pertence_usuario(r, user), axis=1)]
-    minhas_abertas = minhas[~minhas.apply(lambda r: is_concluida(r, hoje()), axis=1)]
-    hoje_df = tarefas[(tarefas.apply(lambda r: periodic_on_date(r, hoje()), axis=1)) & (~tarefas.apply(lambda r: is_concluida(r, hoje()), axis=1))]
+    minhas_abertas = minhas[~minhas.apply(lambda r: is_concluida(r, ref), axis=1)]
+    hoje_df = tarefas[(tarefas.apply(lambda r: periodic_on_date(r, ref), axis=1)) & (~tarefas.apply(lambda r: is_concluida(r, ref), axis=1))]
     pend = tarefas[tarefas["classificacao"] == "Pendente anterior"]
     concl = tarefas[tarefas["classificacao"] == "Concluída hoje"]
     c1, c2, c3, c4 = st.columns(4)
@@ -396,13 +480,13 @@ def dashboard(user):
 
 
 def coordenacao(user):
-    header("Coordenação", "Central gerencial da operação")
-    tarefas = preparar_tarefas()
+    ref = app_frame("Coordenação", "Central gerencial da operação")
+    tarefas = preparar_tarefas(ref)
     hist = listar_historico()
     if tarefas.empty:
         st.info("Nenhuma tarefa cadastrada.")
         return
-    abertas = tarefas[~tarefas.apply(lambda r: is_concluida(r, hoje()), axis=1)]
+    abertas = tarefas[~tarefas.apply(lambda r: is_concluida(r, ref), axis=1)]
     atrasadas = abertas[abertas["classificacao"] == "Pendente anterior"]
     em_andamento = abertas[abertas["status"].astype(str).str.lower() == "em andamento"]
     sem_resp = abertas[abertas["responsavel"].astype(str).str.strip() == ""]
@@ -417,7 +501,7 @@ def coordenacao(user):
     ranking = []
     for resp in sorted([x for x in tarefas["responsavel"].dropna().unique() if txt(x)]):
         base = tarefas[tarefas["responsavel"].astype(str).str.contains(str(resp), case=False, na=False)]
-        abertas_r = base[~base.apply(lambda r: is_concluida(r, hoje()), axis=1)]
+        abertas_r = base[~base.apply(lambda r: is_concluida(r, ref), axis=1)]
         atrasadas_r = abertas_r[abertas_r["classificacao"] == "Pendente anterior"]
         concl_r = hist[(hist["usuario"].astype(str).str.lower() == str(resp).lower()) & (hist["status"].astype(str).str.lower().isin(["concluída", "concluida"])) & (hist["data"].astype(str) == hoje().strftime("%d/%m/%Y"))] if not hist.empty else pd.DataFrame()
         score = max(0, min(100, 100 - len(atrasadas_r)*12 - len(abertas_r)*3 + len(concl_r)*2))
@@ -439,10 +523,10 @@ def coordenacao(user):
 
 
 def minhas_tarefas(user):
-    header("Minhas tarefas", f"Atividades atribuídas a {user}")
-    tarefas = preparar_tarefas()
+    ref = app_frame("Minhas tarefas", f"Atividades atribuídas a {user}")
+    tarefas = preparar_tarefas(ref)
     minhas = tarefas[tarefas.apply(lambda r: pertence_usuario(r, user), axis=1)] if not tarefas.empty else tarefas
-    abertas = minhas[~minhas.apply(lambda r: is_concluida(r, hoje()), axis=1)] if not minhas.empty else minhas
+    abertas = minhas[~minhas.apply(lambda r: is_concluida(r, ref), axis=1)] if not minhas.empty else minhas
     if abertas.empty:
         st.success("Você não possui tarefas pendentes.")
     else:
@@ -451,8 +535,8 @@ def minhas_tarefas(user):
 
 
 def departamento_page(user, departamento):
-    header(departamento, f"Tarefas do departamento {departamento}")
-    tarefas = preparar_tarefas()
+    ref = app_frame(departamento, f"Tarefas do departamento {departamento}")
+    tarefas = preparar_tarefas(ref)
     if tarefas.empty:
         st.info("Nenhuma tarefa cadastrada.")
         return
@@ -460,7 +544,7 @@ def departamento_page(user, departamento):
     busca = st.text_input("Buscar tarefa")
     mostrar_concluidas = st.toggle("Mostrar concluídas", value=False)
     if not mostrar_concluidas:
-        base = base[~base.apply(lambda r: is_concluida(r, hoje()), axis=1)]
+        base = base[~base.apply(lambda r: is_concluida(r, ref), axis=1)]
     if busca:
         b = busca.lower()
         base = base[base["tarefa"].astype(str).str.lower().str.contains(b, na=False) | base["descricao"].astype(str).str.lower().str.contains(b, na=False)]
@@ -472,7 +556,7 @@ def departamento_page(user, departamento):
 
 
 def cadastro(user):
-    header("Cadastro de tarefas", "Inclua novas atividades no sistema")
+    ref = app_frame("Cadastro de tarefas", "Inclua novas atividades no sistema")
     st.info("Ao escolher um Projeto no cadastro, esta tarefa será vinculada automaticamente ao projeto e contará no progresso.")
     deps = listar_departamentos() or ["Contas a Receber", "Contas a Pagar", "Contabilidade", "Controladoria", "Tesouraria"]
     usuarios = listar_usuarios()
@@ -507,7 +591,7 @@ def cadastro(user):
 
 
 def editar(user):
-    header("Editar tarefas", "Altere ou arquive atividades existentes")
+    ref = app_frame("Editar tarefas", "Altere ou arquive atividades existentes")
     tarefas = listar_tarefas(ativas=True)
     if tarefas.empty:
         st.info("Nenhuma tarefa ativa.")
@@ -541,12 +625,12 @@ def editar(user):
 
 
 def pendencias_observacao(user):
-    header("Pendências com observação", "Tarefas abertas que possuem justificativas")
-    tarefas = preparar_tarefas()
+    ref = app_frame("Pendências com observação", "Tarefas abertas que possuem justificativas")
+    tarefas = preparar_tarefas(ref)
     if tarefas.empty:
         st.info("Sem tarefas.")
         return
-    abertas = tarefas[~tarefas.apply(lambda r: is_concluida(r, hoje()), axis=1)]
+    abertas = tarefas[~tarefas.apply(lambda r: is_concluida(r, ref), axis=1)]
     linhas = []
     for _, row in abertas.iterrows():
         obs = ultima_observacao(row.get("id"))
@@ -562,7 +646,7 @@ def pendencias_observacao(user):
 
 
 def arquivadas(user):
-    header("Tarefas arquivadas", "Consulta e recuperação de tarefas")
+    ref = app_frame("Tarefas arquivadas", "Consulta e recuperação de tarefas")
     tarefas = listar_tarefas(ativas=False)
     arq = tarefas[tarefas["ativa"] == "Não"] if not tarefas.empty else tarefas
     if arq.empty:
@@ -578,8 +662,7 @@ def arquivadas(user):
 
 
 def calendario(user):
-    header("Calendário", "Visão por data")
-    ref = st.date_input("Data", value=hoje())
+    ref = app_frame("Calendário", "Visão por data")
     tarefas = listar_tarefas(ativas=True)
     if tarefas.empty:
         st.info("Sem tarefas.")
@@ -778,7 +861,7 @@ def projetos_resumo_df():
 
 
 def projetos(user):
-    header("Projetos", "Gerenciamento integrado dos projetos e tarefas vinculadas")
+    ref = app_frame("Projetos", "Gerenciamento integrado dos projetos e tarefas vinculadas")
 
     projetos_df = listar_projetos()
 
@@ -853,16 +936,26 @@ def projetos(user):
 
 
 def historico():
-    header("Histórico", "Registro das movimentações")
+    ref = app_frame("Histórico", "Registro das movimentações")
     df = listar_historico()
     if df.empty:
         st.info("Sem histórico.")
+        return
+
+    mostrar_tudo = st.toggle("Mostrar histórico completo", value=False)
+
+    if not mostrar_tudo and "data" in df.columns:
+        data_ref_str = ref.strftime("%d/%m/%Y")
+        df = df[df["data"].astype(str) == data_ref_str]
+
+    if df.empty:
+        st.info("Nenhuma movimentação para a data selecionada.")
     else:
         st.dataframe(df, use_container_width=True, hide_index=True)
 
 
 def exportar():
-    header("Exportar Excel", "Baixe uma cópia completa da base SQLite")
+    ref = app_frame("Exportar Excel", "Baixe uma cópia completa da base SQLite")
     saida = Path("Agenda_Exportada.xlsx")
     if st.button("Gerar Excel"):
         exportar_excel(saida)
@@ -872,7 +965,7 @@ def exportar():
 
 
 def admin_sqlite():
-    header("Admin SQLite", "Ferramentas de suporte da base")
+    ref = app_frame("Admin SQLite", "Ferramentas de suporte da base")
     tarefas = listar_tarefas(ativas=False)
     usuarios = listar_usuarios()
     projetos_df = listar_projetos()
@@ -890,6 +983,7 @@ def admin_sqlite():
         tarefas_diag["periodicidade_normalizada"] = tarefas_diag["periodicidade"].apply(normalizar_periodicidade)
         tarefas_diag["aparece_hoje"] = tarefas_diag.apply(lambda r: periodic_on_date(r, hoje()), axis=1)
         st.write(f"Tarefas que devem aparecer hoje: **{int(tarefas_diag['aparece_hoje'].sum())}**")
+        st.caption("Regra de dias úteis: tarefas diárias aparecem apenas de segunda a sexta.")
 
     st.warning("A migração automática está bloqueada quando o banco já possui dados, para evitar duplicações.")
     if st.button("Migrar Agenda.xlsx apenas se o banco estiver vazio"):

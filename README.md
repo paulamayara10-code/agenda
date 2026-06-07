@@ -48,3 +48,18 @@ V18.4 Restaurada e Segura:
 - Preservadas as 4 conclusões de Claudia em 03/06.
 - Removidas duplicidades causadas por reimportação.
 - Migração forçada passa a rodar apenas se o banco estiver vazio, evitando duplicação.
+
+
+V18.5 Data e Dias Úteis:
+- Inclui seletor de Data de Referência no Dashboard, Coordenação, Minhas tarefas, Departamentos e Pendências com observação.
+- Tarefas diárias aparecem apenas em dias úteis.
+- Sábado/domingo não geram agenda recorrente.
+- Tarefa única em fim de semana é empurrada para o próximo dia útil.
+
+
+V18.6 Data Global:
+- Inclui uma data global no topo de todas as abas.
+- Botões: Dia anterior, Hoje e Próximo dia.
+- Todas as abas passam a usar a mesma data de referência.
+- Histórico filtra pela data selecionada, com opção de mostrar completo.
+- Calendário usa a data global.
