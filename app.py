@@ -143,6 +143,63 @@ def data_referencia_global():
     return st.session_state["data_referencia"]
 
 
+def dia_util_anterior(data_ref):
+    data_ant = data_ref - timedelta(days=1)
+    while not eh_dia_util(data_ant):
+        data_ant = data_ant - timedelta(days=1)
+    return data_ant
+
+
+def tarefa_concluida_em_data(id_tarefa, data_ref):
+    hist = listar_historico()
+    if hist.empty:
+        return False
+
+    data_str = data_ref.strftime("%d/%m/%Y")
+
+    filtro = (
+        (hist["id_tarefa"].astype(str) == str(id_tarefa))
+        & (hist["status"].astype(str).str.lower().isin(["concluída", "concluida"]))
+        & (hist["data"].astype(str) == data_str)
+    )
+
+    return filtro.any()
+
+
+def eh_pendencia_anterior(row, ref=None):
+    """
+    Regra gerencial:
+    - tarefa única com data anterior e não concluída = pendência anterior;
+    - tarefa diária vira pendência anterior se não houve conclusão no último dia útil anterior;
+    - fim de semana não gera pendência.
+    """
+    if ref is None:
+        ref = data_referencia_global()
+
+    if not eh_dia_util(ref):
+        return False
+
+    if is_concluida(row, ref):
+        return False
+
+    per = normalizar_periodicidade(row.get("periodicidade"))
+    data_ini = parse_data(row.get("data_inicio"))
+    id_tarefa = row.get("id")
+
+    if per == "diario":
+        ant = dia_util_anterior(ref)
+
+        if data_ini and data_ini > ant:
+            return False
+
+        return not tarefa_concluida_em_data(id_tarefa, ant)
+
+    if per == "unica":
+        return bool(data_ini and data_ini < ref and not is_concluida(row, ref))
+
+    return False
+
+
 def is_concluida(row, ref=None):
     if ref is None:
         ref = hoje()
@@ -446,7 +503,7 @@ def dashboard(user):
     minhas = tarefas[tarefas.apply(lambda r: pertence_usuario(r, user), axis=1)]
     minhas_abertas = minhas[~minhas.apply(lambda r: is_concluida(r, ref), axis=1)]
     hoje_df = tarefas[(tarefas.apply(lambda r: periodic_on_date(r, ref), axis=1)) & (~tarefas.apply(lambda r: is_concluida(r, ref), axis=1))]
-    pend = tarefas[tarefas["classificacao"] == "Pendente anterior"]
+    pend = tarefas[tarefas.apply(lambda r: eh_pendencia_anterior(r, ref), axis=1)]
     concl = tarefas[tarefas["classificacao"] == "Concluída hoje"]
     c1, c2, c3, c4 = st.columns(4)
     with c1: metric_card("⭐ Minhas pendentes", len(minhas_abertas), user, "#7c3aed")
@@ -487,7 +544,7 @@ def coordenacao(user):
         st.info("Nenhuma tarefa cadastrada.")
         return
     abertas = tarefas[~tarefas.apply(lambda r: is_concluida(r, ref), axis=1)]
-    atrasadas = abertas[abertas["classificacao"] == "Pendente anterior"]
+    atrasadas = abertas[abertas.apply(lambda r: eh_pendencia_anterior(r, ref), axis=1)]
     em_andamento = abertas[abertas["status"].astype(str).str.lower() == "em andamento"]
     sem_resp = abertas[abertas["responsavel"].astype(str).str.strip() == ""]
     concl = tarefas[tarefas["classificacao"] == "Concluída hoje"]
@@ -502,7 +559,7 @@ def coordenacao(user):
     for resp in sorted([x for x in tarefas["responsavel"].dropna().unique() if txt(x)]):
         base = tarefas[tarefas["responsavel"].astype(str).str.contains(str(resp), case=False, na=False)]
         abertas_r = base[~base.apply(lambda r: is_concluida(r, ref), axis=1)]
-        atrasadas_r = abertas_r[abertas_r["classificacao"] == "Pendente anterior"]
+        atrasadas_r = abertas_r[abertas_r.apply(lambda r: eh_pendencia_anterior(r, ref), axis=1)]
         concl_r = hist[(hist["usuario"].astype(str).str.lower() == str(resp).lower()) & (hist["status"].astype(str).str.lower().isin(["concluída", "concluida"])) & (hist["data"].astype(str) == hoje().strftime("%d/%m/%Y"))] if not hist.empty else pd.DataFrame()
         score = max(0, min(100, 100 - len(atrasadas_r)*12 - len(abertas_r)*3 + len(concl_r)*2))
         ranking.append({"Usuário": resp, "Pendentes": len(abertas_r), "Atrasadas": len(atrasadas_r), "Concluídas Hoje": len(concl_r), "Score": score})
@@ -713,7 +770,7 @@ def calcular_status_projeto(nome_projeto):
     concluidas = len(vinculadas[vinculadas.apply(lambda r: is_concluida(r, hoje()), axis=1)])
     pendentes = len(vinculadas[~vinculadas.apply(lambda r: is_concluida(r, hoje()), axis=1)])
     em_andamento = len(vinculadas[vinculadas["status"].astype(str).str.lower() == "em andamento"])
-    atrasadas = len(vinculadas[vinculadas["classificacao"] == "Pendente anterior"])
+    atrasadas = len(vinculadas[vinculadas.apply(lambda r: eh_pendencia_anterior(r, data_referencia_global()), axis=1)])
 
     percentual = round((concluidas / total) * 100, 1) if total else 0
 
@@ -984,6 +1041,8 @@ def admin_sqlite():
         tarefas_diag["aparece_hoje"] = tarefas_diag.apply(lambda r: periodic_on_date(r, hoje()), axis=1)
         st.write(f"Tarefas que devem aparecer hoje: **{int(tarefas_diag['aparece_hoje'].sum())}**")
         st.caption("Regra de dias úteis: tarefas diárias aparecem apenas de segunda a sexta.")
+        tarefas_diag["pendencia_anterior_calc"] = tarefas_diag.apply(lambda r: eh_pendencia_anterior(r, data_referencia_global()), axis=1)
+        st.write(f"Pendências anteriores calculadas: **{int(tarefas_diag['pendencia_anterior_calc'].sum())}**")
 
     st.warning("A migração automática está bloqueada quando o banco já possui dados, para evitar duplicações.")
     if st.button("Migrar Agenda.xlsx apenas se o banco estiver vazio"):

@@ -63,3 +63,10 @@ V18.6 Data Global:
 - Todas as abas passam a usar a mesma data de referência.
 - Histórico filtra pela data selecionada, com opção de mostrar completo.
 - Calendário usa a data global.
+
+
+V18.7 Pendências anteriores:
+- Corrige contador de pendências anteriores.
+- Tarefa diária não concluída no último dia útil anterior passa a contar como pendência anterior.
+- Fim de semana não gera pendência.
+- Admin SQLite mostra diagnóstico de pendências anteriores calculadas.
