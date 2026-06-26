@@ -77,3 +77,12 @@ V18.8 Limpeza de Pendências:
 - A ação arquiva, não exclui definitivamente.
 - Histórico permanece preservado.
 - Senha padrão no código: Paula2026.
+
+
+V19 Central Administrativa:
+- Corrige botões Dia anterior / Hoje / Próximo dia.
+- Inclui Central Administrativa.
+- Permite restaurar tarefas arquivadas por ID.
+- Permite restaurar todas as tarefas arquivadas filtradas.
+- Mantém senha administrativa.
+- Preserva histórico e observações.

@@ -370,17 +370,21 @@ def header(title, subtitle):
         st.markdown(f"<div style='text-align:right;font-weight:800;color:#0f172a;'>📅 {datetime.now().strftime('%d/%m/%Y • %H:%M')}</div>", unsafe_allow_html=True)
 
 
+def mudar_data_global(dias):
+    st.session_state["data_referencia"] = data_referencia_global() + timedelta(days=dias)
+
+
+def voltar_hoje():
+    st.session_state["data_referencia"] = hoje()
+
+
 def seletor_data_referencia():
-    """
-    Barra global de data.
-    Todas as telas usam a mesma data salva no session_state.
-    """
     if "data_referencia" not in st.session_state:
         st.session_state["data_referencia"] = hoje()
 
     st.markdown("<div class='panel' style='padding:16px 20px; margin-top:0;'>", unsafe_allow_html=True)
 
-    c0, c1, c2, c3, c4 = st.columns([1.1, 1.2, 0.8, 0.8, 3])
+    c0, c1, c2, c3, c4 = st.columns([1.1, 1.2, 0.9, 0.7, 3])
 
     with c0:
         st.markdown("#### 📅 Data global")
@@ -395,21 +399,15 @@ def seletor_data_referencia():
         st.session_state["data_referencia"] = data_sel
 
     with c2:
-        if st.button("◀ Dia anterior", use_container_width=True):
-            st.session_state["data_referencia"] = st.session_state["data_referencia"] - timedelta(days=1)
-            st.rerun()
+        st.button("◀ Dia anterior", use_container_width=True, on_click=mudar_data_global, args=(-1,))
 
     with c3:
-        if st.button("Hoje", use_container_width=True):
-            st.session_state["data_referencia"] = hoje()
-            st.rerun()
+        st.button("Hoje", use_container_width=True, on_click=voltar_hoje)
 
     with c4:
         c4a, c4b = st.columns([0.9, 2])
         with c4a:
-            if st.button("Próximo dia ▶", use_container_width=True):
-                st.session_state["data_referencia"] = st.session_state["data_referencia"] + timedelta(days=1)
-                st.rerun()
+            st.button("Próximo dia ▶", use_container_width=True, on_click=mudar_data_global, args=(1,))
         with c4b:
             data_ref = st.session_state["data_referencia"]
             if eh_dia_util(data_ref):
@@ -418,7 +416,6 @@ def seletor_data_referencia():
                 st.warning("Sábado/domingo selecionado. Não gera tarefas recorrentes.")
 
     st.markdown("</div>", unsafe_allow_html=True)
-
     return st.session_state["data_referencia"]
 
 
@@ -1101,6 +1098,118 @@ def admin_sqlite():
         st.rerun()
 
 
+
+def central_administrativa(user):
+    ref = app_frame("Central Administrativa", "Recuperação, auditoria e manutenção da agenda")
+
+    st.markdown("<div class='panel'><div class='panel-title'>♻️ Restaurar tarefas arquivadas</div>", unsafe_allow_html=True)
+
+    tarefas = listar_tarefas(ativas=False)
+
+    if tarefas.empty or "ativa" not in tarefas.columns:
+        st.info("Nenhuma tarefa encontrada no banco.")
+    else:
+        arquivadas_df = tarefas[tarefas["ativa"].astype(str).str.strip().str.lower().isin(["não", "nao", "n", "0", "false"])]
+
+        st.write(f"Tarefas arquivadas encontradas: **{len(arquivadas_df)}**")
+
+        if arquivadas_df.empty:
+            st.success("Nenhuma tarefa arquivada no momento.")
+        else:
+            st.warning("Restaurar altera a tarefa para Ativa = Sim e Status = Pendente, preservando histórico e observações.")
+
+            filtro_resp = st.selectbox(
+                "Filtrar por responsável",
+                ["Todos"] + sorted([x for x in arquivadas_df["responsavel"].dropna().astype(str).unique() if x])
+            )
+
+            filtro_dep = st.selectbox(
+                "Filtrar por departamento",
+                ["Todos"] + sorted([x for x in arquivadas_df["departamento"].dropna().astype(str).unique() if x])
+            )
+
+            exib = arquivadas_df.copy()
+
+            if filtro_resp != "Todos":
+                exib = exib[exib["responsavel"].astype(str) == filtro_resp]
+
+            if filtro_dep != "Todos":
+                exib = exib[exib["departamento"].astype(str) == filtro_dep]
+
+            if exib.empty:
+                st.info("Nenhuma tarefa arquivada encontrada com os filtros.")
+            else:
+                cols = [c for c in ["id", "tarefa", "departamento", "responsavel", "status", "ultima_atualizacao"] if c in exib.columns]
+                st.dataframe(exib[cols], use_container_width=True, hide_index=True)
+
+                ids_texto = st.text_input("IDs para restaurar", placeholder="Ex.: 12, 15, 18")
+
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    senha = st.text_input("Senha de administradora", type="password", key="senha_restore_ids")
+
+                    if st.button("Restaurar IDs informados", key="btn_restore_ids"):
+                        if senha != SENHA_ADMIN_PENDENCIAS:
+                            st.error("Senha incorreta.")
+                        else:
+                            ids = []
+                            for parte in ids_texto.replace(";", ",").split(","):
+                                parte = parte.strip()
+                                if parte.isdigit():
+                                    ids.append(int(parte))
+
+                            if not ids:
+                                st.warning("Informe pelo menos um ID válido.")
+                            else:
+                                qtd = 0
+                                for idt in ids:
+                                    if reativar_tarefa(idt, user):
+                                        qtd += 1
+                                st.success(f"{qtd} tarefa(s) restaurada(s).")
+                                st.rerun()
+
+                with c2:
+                    senha_todas = st.text_input("Senha para restaurar todas do filtro", type="password", key="senha_restore_all")
+
+                    if st.button("Restaurar todas filtradas", key="btn_restore_all"):
+                        if senha_todas != SENHA_ADMIN_PENDENCIAS:
+                            st.error("Senha incorreta.")
+                        else:
+                            qtd = 0
+                            for _, row in exib.iterrows():
+                                try:
+                                    if reativar_tarefa(int(row.get("id")), user):
+                                        qtd += 1
+                                except Exception:
+                                    pass
+                            st.success(f"{qtd} tarefa(s) restaurada(s).")
+                            st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='panel'><div class='panel-title'>📜 Auditoria rápida</div>", unsafe_allow_html=True)
+
+    hist = listar_historico()
+    if hist.empty:
+        st.info("Sem histórico registrado.")
+    else:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Registros no histórico", len(hist))
+        with col2:
+            arquiv = hist[hist["status"].astype(str).str.lower().str.contains("arquiv", na=False)]
+            st.metric("Arquivamentos", len(arquiv))
+        with col3:
+            reativ = hist[hist["status"].astype(str).str.lower().str.contains("reativ", na=False)]
+            st.metric("Reativações", len(reativ))
+
+        st.dataframe(hist.head(30), use_container_width=True, hide_index=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+
 def main():
     user, page, deps = sidebar()
     if page == "Dashboard": dashboard(user)
@@ -1115,6 +1224,7 @@ def main():
     elif page == "Tarefas arquivadas": arquivadas(user)
     elif page == "Histórico": historico()
     elif page == "Exportar Excel": exportar()
+    elif page == "Central Administrativa": central_administrativa(user)
     elif page == "Admin SQLite": admin_sqlite()
 
 
