@@ -70,3 +70,10 @@ V18.7 Pendências anteriores:
 - Tarefa diária não concluída no último dia útil anterior passa a contar como pendência anterior.
 - Fim de semana não gera pendência.
 - Admin SQLite mostra diagnóstico de pendências anteriores calculadas.
+
+
+V18.8 Limpeza de Pendências:
+- Inclui botão com senha para arquivar pendências anteriores.
+- A ação arquiva, não exclui definitivamente.
+- Histórico permanece preservado.
+- Senha padrão no código: Paula2026.

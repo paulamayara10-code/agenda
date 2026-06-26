@@ -28,6 +28,8 @@ from database import (
 )
 from migrar_excel_para_sqlite import migrar_excel_para_sqlite
 
+SENHA_ADMIN_PENDENCIAS = "Paula2026"
+
 
 st.set_page_config(
     page_title="Agenda Operacional SQLite",
@@ -102,6 +104,26 @@ def normalizar_departamento(v):
         "projetos": "Projetos",
     }
     return mapa.get(" ".join(t.lower().split()), t.strip().title())
+
+
+
+def arquivar_pendencias_anteriores(tarefas_df, usuario, ref):
+    qtd = 0
+
+    if tarefas_df.empty:
+        return 0
+
+    pendentes = tarefas_df[tarefas_df.apply(lambda r: eh_pendencia_anterior(r, ref), axis=1)]
+
+    for _, row in pendentes.iterrows():
+        try:
+            id_tarefa = int(row.get("id"))
+            if arquivar_tarefa(id_tarefa, usuario):
+                qtd += 1
+        except Exception:
+            pass
+
+    return qtd
 
 
 def normalizar_periodicidade(v):
@@ -525,6 +547,19 @@ def dashboard(user):
         else:
             for _, row in pend.iterrows():
                 task_card(row, user, "dash_pend")
+
+            with st.expander("🧹 Limpar pendências anteriores", expanded=False):
+                st.warning("Essa ação arquiva as pendências anteriores da data selecionada. Não exclui o histórico.")
+                senha = st.text_input("Senha de administradora", type="password", key="senha_limpar_pend_dash")
+
+                if st.button("Arquivar pendências anteriores", key="btn_limpar_pend_dash"):
+                    if senha == SENHA_ADMIN_PENDENCIAS:
+                        qtd = arquivar_pendencias_anteriores(tarefas, user, ref)
+                        st.success(f"{qtd} pendência(s) anterior(es) arquivada(s).")
+                        st.rerun()
+                    else:
+                        st.error("Senha incorreta.")
+
         st.markdown("</div>", unsafe_allow_html=True)
     with cB:
         st.markdown("<div class='panel'><div class='panel-title'>🟡 Agenda de hoje</div>", unsafe_allow_html=True)
@@ -554,6 +589,21 @@ def coordenacao(user):
     with c3: metric_card("🟡 Abertas", len(abertas), "Pendentes", "#f59e0b")
     with c4: metric_card("✅ Concluídas", len(concl), "Hoje", "#16a34a")
     with c5: metric_card("👤 Sem responsável", len(sem_resp), "Ajustar", "#2563eb")
+    st.markdown("<div class='panel'><div class='panel-title'>🧹 Limpeza de pendências anteriores</div>", unsafe_allow_html=True)
+    if atrasadas.empty:
+        st.success("Não há pendências anteriores para limpar na data selecionada.")
+    else:
+        st.warning(f"Existem {len(atrasadas)} pendência(s) anterior(es). A ação abaixo arquiva as tarefas e mantém o histórico.")
+        senha_coord = st.text_input("Senha de administradora", type="password", key="senha_limpar_pend_coord")
+        if st.button("Arquivar todas as pendências anteriores", key="btn_limpar_pend_coord"):
+            if senha_coord == SENHA_ADMIN_PENDENCIAS:
+                qtd = arquivar_pendencias_anteriores(tarefas, user, ref)
+                st.success(f"{qtd} pendência(s) anterior(es) arquivada(s).")
+                st.rerun()
+            else:
+                st.error("Senha incorreta.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown("<div class='panel'><div class='panel-title'>📊 Ranking operacional</div>", unsafe_allow_html=True)
     ranking = []
     for resp in sorted([x for x in tarefas["responsavel"].dropna().unique() if txt(x)]):
