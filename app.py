@@ -48,6 +48,14 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] * { color:#0f172a !i
 .blue{background:#dbeafe;color:#1d4ed8}.green{background:#dcfce7;color:#15803d}.red{background:#fee2e2;color:#b91c1c}.yellow{background:#fef3c7;color:#b45309}.purple{background:#ede9fe;color:#6d28d9}.gray{background:#f1f5f9;color:#475569}.orange{background:#ffedd5;color:#c2410c}
 .task-title{font-size:18px;font-weight:900;color:#0f172a}.done{text-decoration:line-through;color:#94a3b8}
 .stButton>button{border-radius:14px;font-weight:850}
+
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] textarea,
+section[data-testid="stSidebar"] select,
+section[data-testid="stSidebar"] [data-baseweb="select"] span,
+section[data-testid="stSidebar"] [data-baseweb="select"] div {
+    color:#0f172a !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -198,7 +206,7 @@ def ensure_admin_seed():
 def sidebar():
     ensure_admin_seed()
     st.sidebar.markdown("## ⚕️ FIRST OPS")
-    st.sidebar.markdown("### Operational Control Center")
+    st.sidebar.markdown("### Control Center 3.0")
     st.sidebar.divider()
 
     users = list_users(True)
