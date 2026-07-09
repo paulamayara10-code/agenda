@@ -15,11 +15,11 @@ from db import (
     set_execution_status, add_execution_note, reschedule_execution, cancel_execution,
     list_projects, create_project, list_events, export_excel
 )
-from migrate import preview_backup, migrate_backup
+from migrate import preview_backup, migrate_backup, repair_from_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS 2.0",
+    page_title="FIRST OPS 3.1",
     page_icon="⚕️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -70,6 +70,10 @@ def norm(v):
     out = text(v).lower()
     out = unicodedata.normalize("NFKD", out).encode("ascii", "ignore").decode("ascii")
     return " ".join(out.split())
+
+
+def _menu_norm(value):
+    return norm(value)
 
 
 def today():
@@ -210,11 +214,12 @@ def sidebar():
     st.sidebar.divider()
 
     users = list_users(True)
-    names = users["name"].tolist() if not users.empty else ["Paula"]
+    names = users["name"].dropna().astype(str).tolist() if not users.empty else ["Paula"]
     user = st.sidebar.selectbox("Usuário", names)
 
     deps = list_departments()
-    deps = sorted(list(dict.fromkeys([d for d in deps if text(d)])))
+    fixed = {"home", "migracao", "meu dia", "equipe", "coordenacao", "pendencias", "rotinas", "projetos", "historico", "administracao", "exportar"}
+    deps = sorted(list(dict.fromkeys([d for d in deps if text(d) and _menu_norm(d) not in fixed])))
 
     menu = ["Home", "Migração", "Meu Dia", "Equipe", "Coordenação"] + deps + [
         "Pendências", "Rotinas", "Projetos", "Histórico", "Administração", "Exportar"
@@ -356,11 +361,32 @@ def migracao(user):
     st.caption("Abas encontradas: " + ", ".join(preview.get("sheets", [])))
     st.markdown("</div>", unsafe_allow_html=True)
 
+    st.markdown("<div class='panel'><div class='panel-title'>🔎 Base atual do FIRST OPS</div>", unsafe_allow_html=True)
+    cA, cB, cC = st.columns(3)
+    with cA:
+        metric("Usuários no banco", len(list_users(False)), "FIRST OPS", "#2563eb")
+    with cB:
+        metric("Rotinas no banco", len(list_routines(False)), "FIRST OPS", "#7c3aed")
+    with cC:
+        metric("Projetos no banco", len(list_projects(False)), "FIRST OPS", "#f59e0b")
+    st.markdown("</div>", unsafe_allow_html=True)
+
     done = setting("migration_done", "0") == "1"
     if done:
         st.success("Migração já realizada neste banco.")
     else:
         st.warning("A migração será feita uma única vez e importará apenas a base útil: usuários, rotinas, projetos e histórico.")
+
+    st.markdown("<div class='panel'><div class='panel-title'>🛠️ Correção da migração</div>", unsafe_allow_html=True)
+    st.info("Se os usuários ou rotinas não aparecerem, clique abaixo. Ele reprocessa o backup sem apagar dados e evita duplicidades.")
+    if st.button("REPROCESSAR BACKUP SEM APAGAR DADOS"):
+        ok, msg = repair_from_backup("Agenda.xlsx")
+        if ok:
+            st.success(msg)
+            st.rerun()
+        else:
+            st.warning(msg)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
     with col1:

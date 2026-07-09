@@ -148,6 +148,23 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
             create_user(name, role, department)
             total_users += 1
 
+
+    # Deriva usuários a partir dos responsáveis das tarefas, caso a aba Usuarios esteja incompleta
+    if sh_tasks:
+        try:
+            tasks_for_users = pd.read_excel(excel_path, sheet_name=sh_tasks, dtype=object)
+            for _, row in tasks_for_users.iterrows():
+                resp = col(row, "Responsavel", "Responsável", "owner", "responsavel")
+                department = dep(col(row, "Departamento", "department"))
+                if resp:
+                    # aceita múltiplos responsáveis separados por /, ; ou ,
+                    for name in str(resp).replace("/", ",").replace(";", ",").split(","):
+                        name = name.strip()
+                        if name:
+                            create_user(name, "Usuário", department)
+        except Exception:
+            pass
+
     if sh_projects:
         projects_df = pd.read_excel(excel_path, sheet_name=sh_projects, dtype=object)
         for _, row in projects_df.iterrows():
@@ -212,3 +229,11 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
 
     msg = f"Migração concluída: {total_users} usuários, {total_routines} rotinas, {total_projects} projetos, {total_hist} históricos."
     return True, msg
+
+
+def repair_from_backup(excel_path="Agenda.xlsx"):
+    """
+    Reprocessa usuários, rotinas, projetos e histórico sem apagar dados.
+    Usa as regras de duplicidade do banco para evitar repetir rotinas/projetos iguais.
+    """
+    return migrate_backup(excel_path, force=True)
