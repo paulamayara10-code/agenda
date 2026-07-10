@@ -4,7 +4,7 @@ from pathlib import Path
 import unicodedata
 import pandas as pd
 
-from db import (
+from first_ops_database import (
     init_db, connect, create_user, create_routine, create_project,
     exec_sql, query_df, set_setting, setting, log, DB_PATH
 )

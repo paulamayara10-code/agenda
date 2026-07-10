@@ -6,7 +6,7 @@ import unicodedata
 import pandas as pd
 import streamlit as st
 
-from db import (
+from first_ops_database import (
     DB_PATH, init_db, setting,
     list_users, create_user, list_departments,
     list_routines, create_routine, archive_routine,
@@ -17,7 +17,7 @@ from db import (
 from migrate import preview_backup, migrate_backup, repair_from_backup
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise",
+    page_title="FIRST OPS Enterprise 1.1",
     page_icon="⚕️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -222,7 +222,7 @@ def filter_user(df, user):
 def sidebar():
     ensure_admin()
     st.sidebar.markdown("## ⚕️ FIRST OPS")
-    st.sidebar.markdown("### Gestão Operacional")
+    st.sidebar.markdown("### Gestão Operacional • 1.1")
     st.sidebar.divider()
     users = list_users(True)
     names = users["name"].dropna().astype(str).tolist() if not users.empty else ["Paula"]

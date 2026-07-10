@@ -14,3 +14,11 @@ Nesta versão, as tarefas são calculadas diretamente a partir das rotinas.
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+
+## FIRST OPS Enterprise 1.1
+
+Correção técnica:
+- O módulo `db.py` foi renomeado para `first_ops_database.py`.
+- Todos os imports foram atualizados.
+- A alteração evita conflito com módulos externos chamados `db` no Streamlit Cloud.
