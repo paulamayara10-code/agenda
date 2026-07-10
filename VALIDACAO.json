@@ -1,0 +1,43 @@
+{
+  "import_message": "Importação concluída: 5 usuários, 44 rotinas, 3 projetos e 28 registros históricos.",
+  "users": 5,
+  "routines": 44,
+  "projects": 3,
+  "assignment_test_2026_07_10": {
+    "Claudia": 15,
+    "Gustavo": 15,
+    "Liliane": 1,
+    "Paula": 16,
+    "Silvia": 3
+  },
+  "owners_summary": [
+    {
+      "owners": "Claudia",
+      "qtd": 16
+    },
+    {
+      "owners": "Gustavo",
+      "qtd": 3
+    },
+    {
+      "owners": "Liliane",
+      "qtd": 2
+    },
+    {
+      "owners": "Paula",
+      "qtd": 4
+    },
+    {
+      "owners": "Paula/Gustavo",
+      "qtd": 15
+    },
+    {
+      "owners": "Paula/Liliane",
+      "qtd": 1
+    },
+    {
+      "owners": "Silvia",
+      "qtd": 3
+    }
+  ]
+}

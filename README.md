@@ -1,35 +1,32 @@
-# FIRST OPS Enterprise
+# FIRST OPS Enterprise 2.0
 
-Nesta versão, as tarefas são calculadas diretamente a partir das rotinas.
+Versão reconstruída com banco novo e isolado.
 
-- Abrir uma data não grava dezenas de execuções no banco.
-- A execução é criada somente ao iniciar, concluir, comentar, reprogramar ou cancelar.
-- Rotinas diárias, semanais, mensais e únicas aparecem automaticamente na data correta.
-- Pendências anteriores usam o último dia útil.
-- Base e Backup, Administração e Exportação ficam restritos ao perfil administrador.
+## Dados carregados
 
-## Executar
+- 5 usuários
+- 44 rotinas
+- 3 projetos
+- 28 registros históricos legados
+
+## Recursos
+
+- atividades distribuídas pelo campo `responsavel` do backup;
+- tarefas compartilhadas reconhecidas por `/`;
+- geração diária automática;
+- pendências de dias anteriores;
+- iniciar, concluir, comentar, reprogramar e cancelar;
+- histórico diário de todas as ações;
+- backup automático local por dia;
+- download do banco SQLite e exportação Excel;
+- Base e Backup disponível apenas para administradores.
+
+## Publicação
+
+Coloque todos os arquivos e pastas do ZIP na raiz do repositório e execute:
 
 ```bash
-pip install -r requirements.txt
 streamlit run app.py
 ```
 
-
-## FIRST OPS Enterprise 1.1
-
-Correção técnica:
-- O módulo `db.py` foi renomeado para `first_ops_database.py`.
-- Todos os imports foram atualizados.
-- A alteração evita conflito com módulos externos chamados `db` no Streamlit Cloud.
-
-
-## FIRST OPS Enterprise 1.2
-
-Correções:
-- Responsáveis, departamentos e periodicidades passam a reconhecer os nomes
-  das colunas em minúsculas do backup.
-- A opção "Corrigir cadastros importados" completa as 44 rotinas já existentes,
-  sem apagar histórico ou execuções.
-- Tarefas compartilhadas continuam reconhecendo responsáveis separados por `/`.
-- O nome selecionado no campo Usuário passou a ter contraste forçado.
+O banco desta versão é `data/first_ops_enterprise2.db`, portanto não usa bancos antigos.
