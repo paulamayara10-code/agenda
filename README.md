@@ -123,3 +123,14 @@ Permissões:
   administrativa e executar backups manuais.
 - Todas as alterações continuam registradas no histórico.
 - Backups automáticos são preservados antes das alterações críticas.
+
+
+## FIRST OPS Enterprise 2.3.4 — Acesso Total
+
+- Todos os usuários acessam todas as abas.
+- Todos podem cadastrar e atualizar usuários.
+- Todos podem criar, editar, duplicar, desativar, reativar e excluir rotinas.
+- Backup, download do SQLite, exportação Excel e importação de rotinas ficam
+  concentrados em uma única aba chamada `Backup`.
+- A Central de Rotinas não exibe mais controles de backup ou exportação.
+- Textos genéricos foram substituídos por orientações diretas.

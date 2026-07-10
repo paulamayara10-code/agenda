@@ -54,7 +54,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.3.3",
+    page_title="FIRST OPS Enterprise 2.3.4",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -238,10 +238,7 @@ def sidebar():
 
     menu = ["Meu Painel", "Meu Dia", "Equipe", "Coordenação"]
     menu += departments
-    menu += ["Pendências", "Rotinas", "Projetos", "Histórico"]
-
-    if is_admin(user):
-        menu += ["Administração", "Base e Backup"]
+    menu += ["Pendências", "Rotinas", "Projetos", "Histórico", "Usuários", "Backup"]
 
     page = st.sidebar.radio("Navegação", menu)
     return user, page, departments
@@ -376,7 +373,7 @@ def activity_groups(frame_data: pd.DataFrame, user: str, prefix: str) -> None:
 
 
 def home(user: str) -> None:
-    day = frame("Meu Painel", f"Prioridades de {user}")
+    day = frame("Meu Painel", f"Atividades de {user}")
     ensure_activities(day)
 
     mine = list_user_activities(day, user)
@@ -437,7 +434,7 @@ def my_day(user: str) -> None:
 
 
 def team(user: str) -> None:
-    day = frame("Equipe", "Visão geral por colaborador")
+    day = frame("Equipe", "Andamento por pessoa")
     activities = list_activities(day)
     users = list_users(True)
 
@@ -589,7 +586,7 @@ def team(user: str) -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
 def coordination(user: str) -> None:
-    day = frame("Coordenação", "Acompanhamento das entregas da equipe")
+    day = frame("Coordenação", "Pendências e entregas da equipe")
     activities = list_activities(day)
     previous = list_previous_pending(day)
 
@@ -624,7 +621,7 @@ def department_page(user: str, department: str) -> None:
 
 
 def pending_page(user: str) -> None:
-    day = frame("Pendências", "Atividades de datas anteriores ainda abertas")
+    day = frame("Pendências", "Atividades abertas de dias úteis anteriores")
     previous = list_previous_pending(day)
     activity_groups(previous, user, "previous")
 
@@ -827,7 +824,7 @@ def render_routine_form(
 
 
 def routines_page(user: str) -> None:
-    day = frame("Central de Rotinas", "Cadastro e manutenção das atividades recorrentes")
+    day = frame("Rotinas", "Cadastro das atividades recorrentes")
 
     users = list_users(True)["name"].dropna().astype(str).tolist()
     departments = list_departments() or [
@@ -844,129 +841,19 @@ def routines_page(user: str) -> None:
         else []
     )
 
-    admin = is_admin(user)
+    st.markdown("### Manutenção de rotinas")
 
-    st.info(
-        "Todos os usuários podem cadastrar, editar, duplicar, desativar e "
-        "reativar rotinas. Exclusão definitiva, importação em massa, "
-        "exportação administrativa e backup permanecem restritos à administradora."
+    if st.button(
+        "➕ Nova rotina",
+        type="primary",
+        use_container_width=False,
+    ):
+        st.session_state["show_new_routine"] = True
+        st.session_state.pop("edit_routine_id", None)
+
+    st.caption(
+        "Cadastre, edite, duplique, desative ou reative atividades recorrentes."
     )
-
-    a, b = st.columns([1.2, 3])
-
-    with a:
-        if st.button(
-            "➕ Nova rotina",
-            type="primary",
-            use_container_width=True,
-        ):
-            st.session_state["show_new_routine"] = True
-            st.session_state.pop("edit_routine_id", None)
-
-    with b:
-        st.caption(
-            "As alterações ficam registradas com usuário, data e hora. "
-            "Um backup é criado antes de mudanças críticas."
-        )
-
-    if admin:
-        a_admin, b_admin = st.columns(2)
-
-        with a_admin:
-            routines_export = list_routines(False)
-            export_buffer = BytesIO()
-            with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
-                routines_export.to_excel(
-                    writer,
-                    sheet_name="Rotinas",
-                    index=False,
-                )
-
-            st.download_button(
-                "📤 Exportar rotinas",
-                data=export_buffer.getvalue(),
-                file_name=f"FIRST_OPS_Rotinas_{date.today().isoformat()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
-
-        with b_admin:
-            if st.button(
-                "💾 Backup agora",
-                use_container_width=True,
-            ):
-                create_full_backup_package()
-                cleanup_old_backups(30)
-                st.success("Backup criado.")
-
-        with st.expander("📥 Importar rotinas por Excel"):
-            st.caption(
-                "O arquivo deve possuir as colunas: title, description, "
-                "department, owners, frequency, due_rule, priority, "
-                "mandatory, project e start_date."
-            )
-            upload = st.file_uploader(
-                "Arquivo Excel",
-                type=["xlsx"],
-                key="routine_import_file",
-            )
-
-            if upload is not None:
-                imported = pd.read_excel(upload, dtype=object)
-                required = {"title", "owners"}
-                missing = required.difference(imported.columns)
-
-                if missing:
-                    st.error(
-                        "Colunas obrigatórias ausentes: "
-                        + ", ".join(sorted(missing))
-                    )
-                elif st.button("Importar cadastros", type="primary"):
-                    create_full_backup_package()
-                    imported_count = 0
-                    errors = []
-
-                    for index, row in imported.iterrows():
-                        try:
-                            title = normalize_text(row.get("title"))
-                            owners_value = normalize_text(row.get("owners"))
-                            if not title or not owners_value:
-                                continue
-
-                            create_routine(
-                                {
-                                    "source_id": (
-                                        normalize_text(row.get("source_id"))
-                                        or f"excel-{datetime.now().strftime('%Y%m%d%H%M%S%f')}-{index}"
-                                    ),
-                                    "title": title,
-                                    "description": normalize_text(row.get("description")),
-                                    "department": normalize_text(row.get("department")),
-                                    "owners": owners_value,
-                                    "frequency": normalize_text(row.get("frequency")) or "Diária",
-                                    "due_rule": normalize_text(row.get("due_rule")),
-                                    "priority": normalize_text(row.get("priority")) or "Normal",
-                                    "mandatory": str(row.get("mandatory", "")).strip().lower() in {
-                                        "1", "sim", "s", "true"
-                                    },
-                                    "project": normalize_text(row.get("project")),
-                                    "start_date": normalize_text(row.get("start_date")) or br(day),
-                                },
-                                user,
-                            )
-                            imported_count += 1
-                        except Exception as exc:
-                            errors.append(f"Linha {index + 2}: {exc}")
-
-                    st.success(
-                        f"{imported_count} rotina(s) importada(s)."
-                    )
-                    if errors:
-                        st.warning(
-                            "Algumas linhas não foram importadas:\n"
-                            + "\n".join(errors[:10])
-                        )
-                    st.rerun()
 
     if st.session_state.get("show_new_routine"):
         with st.expander("➕ Nova rotina", expanded=True):
@@ -1172,7 +1059,7 @@ def routines_page(user: str) -> None:
                     )
                     st.rerun()
 
-                if admin and not active:
+                if not active:
                     with st.expander("🗑️ Excluir definitivamente"):
                         confirm = st.checkbox(
                             "Confirmo a exclusão desta rotina",
@@ -1198,7 +1085,7 @@ def routines_page(user: str) -> None:
                                 )
 
 def projects_page(user: str) -> None:
-    day = frame("Projetos", "Acompanhamento dos projetos da área")
+    day = frame("Projetos", "Prazos e andamento dos projetos")
     projects = list_projects(True)
 
     if projects.empty:
@@ -1213,17 +1100,14 @@ def projects_page(user: str) -> None:
 
 
 def history_page(user: str) -> None:
-    day = frame("Histórico", "Registro diário das movimentações")
+    day = frame("Histórico", "Ações registradas no sistema")
     show_all = st.toggle("Exibir todo o histórico", value=False)
     events = list_events(None if show_all else day)
     st.dataframe(events, use_container_width=True, hide_index=True)
 
 
 def administration_page(user: str) -> None:
-    day = frame("Administração", "Usuários e cadastros")
-    if not is_admin(user):
-        st.error("Acesso restrito.")
-        return
+    day = frame("Usuários", "Cadastro e atualização da equipe")
 
     users = list_users(False)
     c1, c2, c3 = st.columns(3)
@@ -1240,7 +1124,7 @@ def administration_page(user: str) -> None:
     with st.expander("➕ Cadastrar usuário"):
         with st.form("new_user"):
             name = st.text_input("Nome")
-            role = st.selectbox("Perfil", ["Usuário", "Coordenador", "Administradora"])
+            role = st.selectbox("Perfil", ["Usuário", "Coordenador", "Administradora"], help="O perfil fica registrado para organização, mas não limita o acesso nesta versão.")
             department = st.selectbox(
                 "Departamento",
                 list_departments() or ["Controladoria"],
@@ -1255,28 +1139,37 @@ def administration_page(user: str) -> None:
 
 
 def backup_page(user: str) -> None:
-    day = frame("Base e Backup", "Segurança, cópias e exportação")
-    if not is_admin(user):
-        st.error("Acesso restrito.")
-        return
+    day = frame("Backup", "Cópias, exportação e importação da base")
 
     export_path = Path("FIRST_OPS_Backup.xlsx")
+
+    st.markdown("### Criar e baixar cópias")
 
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        if st.button("Criar backup completo agora", type="primary", use_container_width=True):
+        if st.button(
+            "Criar backup completo",
+            type="primary",
+            use_container_width=True,
+        ):
             create_full_backup_package()
             cleanup_old_backups(30)
             st.success("Backup completo criado.")
 
     with c2:
-        if st.button("Gerar Excel para conferência", use_container_width=True):
+        if st.button(
+            "Gerar arquivo Excel",
+            use_container_width=True,
+        ):
             export_excel(export_path)
             st.success("Arquivo Excel gerado.")
 
     with c3:
-        if st.button("Criar cópia do banco", use_container_width=True):
+        if st.button(
+            "Criar cópia do banco",
+            use_container_width=True,
+        ):
             path = create_snapshot()
             cleanup_old_backups(30)
             st.success(f"Cópia criada: {path.name}")
@@ -1299,25 +1192,117 @@ def backup_page(user: str) -> None:
             use_container_width=True,
         )
 
-    st.info(
-        "O sistema cria automaticamente uma cópia local por dia e mantém "
-        "as 30 cópias mais recentes."
+    st.markdown("### Importar rotinas")
+
+    st.caption(
+        "O arquivo deve conter as colunas: title, owners, description, "
+        "department, frequency, due_rule, priority, mandatory, project e start_date."
     )
 
+    upload = st.file_uploader(
+        "Selecione o Excel de rotinas",
+        type=["xlsx"],
+        key="backup_routine_import",
+    )
+
+    if upload is not None:
+        imported = pd.read_excel(upload, dtype=object)
+        required = {"title", "owners"}
+        missing = required.difference(imported.columns)
+
+        if missing:
+            st.error(
+                "Colunas obrigatórias ausentes: "
+                + ", ".join(sorted(missing))
+            )
+        else:
+            preview_columns = [
+                column for column in [
+                    "title", "description", "department", "owners",
+                    "frequency", "due_rule", "priority", "project"
+                ] if column in imported.columns
+            ]
+
+            st.dataframe(
+                imported[preview_columns].head(20),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            if st.button(
+                "Importar rotinas",
+                type="primary",
+                use_container_width=True,
+            ):
+                create_full_backup_package()
+                imported_count = 0
+                errors = []
+
+                for index, row in imported.iterrows():
+                    try:
+                        title = normalize_text(row.get("title"))
+                        owners_value = normalize_text(row.get("owners"))
+
+                        if not title or not owners_value:
+                            continue
+
+                        create_routine(
+                            {
+                                "source_id": (
+                                    normalize_text(row.get("source_id"))
+                                    or f"excel-{datetime.now().strftime('%Y%m%d%H%M%S%f')}-{index}"
+                                ),
+                                "title": title,
+                                "description": normalize_text(row.get("description")),
+                                "department": normalize_text(row.get("department")),
+                                "owners": owners_value,
+                                "frequency": normalize_text(row.get("frequency")) or "Diária",
+                                "due_rule": normalize_text(row.get("due_rule")),
+                                "priority": normalize_text(row.get("priority")) or "Normal",
+                                "mandatory": str(row.get("mandatory", "")).strip().lower() in {
+                                    "1", "sim", "s", "true"
+                                },
+                                "project": normalize_text(row.get("project")),
+                                "start_date": normalize_text(row.get("start_date")) or br(day),
+                            },
+                            user,
+                        )
+                        imported_count += 1
+                    except Exception as exc:
+                        errors.append(f"Linha {index + 2}: {exc}")
+
+                st.success(
+                    f"{imported_count} rotina(s) importada(s)."
+                )
+
+                if errors:
+                    st.warning(
+                        "Linhas não importadas:\n"
+                        + "\n".join(errors[:10])
+                    )
+
+                st.rerun()
+
+    st.markdown("### Cópias disponíveis")
+
     backups = list_backup_files()
+
     if backups.empty:
-        st.caption("Nenhuma cópia local registrada.")
+        st.caption("Nenhuma cópia local criada.")
     else:
-        st.markdown("### Cópias disponíveis")
         st.dataframe(
             backups[["arquivo", "tamanho_kb", "modificado_em"]],
             use_container_width=True,
             hide_index=True,
         )
 
+    st.caption(
+        "O sistema mantém as 30 cópias mais recentes e cria uma cópia "
+        "antes de alterações importantes."
+    )
+
     st.success(
-        f"O dia {br(GO_LIVE_DATE)} é o marco zero da operação. "
-        "Nenhuma pendência anterior a essa data será contabilizada."
+        f"Início oficial dos indicadores: {br(GO_LIVE_DATE)}."
     )
 
 def main() -> None:
@@ -1341,9 +1326,9 @@ def main() -> None:
         projects_page(user)
     elif page == "Histórico":
         history_page(user)
-    elif page == "Administração":
+    elif page == "Usuários":
         administration_page(user)
-    elif page == "Base e Backup":
+    elif page == "Backup":
         backup_page(user)
 
 
