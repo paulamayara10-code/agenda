@@ -140,11 +140,11 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
     if sh_users:
         users_df = pd.read_excel(excel_path, sheet_name=sh_users, dtype=object)
         for _, row in users_df.iterrows():
-            name = col(row, "Nome", "name", "Usuario", "Usuário")
+            name = col(row, "Nome", "nome", "name", "Usuario", "Usuário", "usuario")
             if not name:
                 continue
-            role = col(row, "Perfil", "role") or "Usuário"
-            department = dep(col(row, "Departamento", "department"))
+            role = col(row, "Perfil", "perfil", "role") or "Usuário"
+            department = dep(col(row, "Departamento", "departamento", "department"))
             create_user(name, role, department)
             total_users += 1
 
@@ -155,7 +155,7 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
             tasks_for_users = pd.read_excel(excel_path, sheet_name=sh_tasks, dtype=object)
             for _, row in tasks_for_users.iterrows():
                 resp = col(row, "Responsavel", "Responsável", "owner", "responsavel")
-                department = dep(col(row, "Departamento", "department"))
+                department = dep(col(row, "Departamento", "departamento", "department"))
                 if resp:
                     # aceita múltiplos responsáveis separados por /, ; ou ,
                     for name in str(resp).replace("/", ",").replace(";", ",").split(","):
@@ -173,14 +173,14 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
                 continue
             create_project({
                 "name": name,
-                "description": col(row, "Objetivo", "Descrição", "Descricao", "description"),
-                "department": dep(col(row, "Departamento", "department")),
-                "owner": col(row, "Responsavel", "Responsável", "owner"),
+                "description": col(row, "Objetivo", "objetivo", "Descrição", "Descricao", "descricao", "description"),
+                "department": dep(col(row, "Departamento", "departamento", "department")),
+                "owner": col(row, "Responsavel", "Responsável", "responsavel", "owner"),
                 "start_date": col(row, "Data de Inicio", "Data Início", "data_inicio", "start_date"),
                 "due_date": col(row, "Prazo Final", "prazo_final", "due_date"),
-                "stage": col(row, "Status", "stage") or "Planejamento",
-                "next_step": col(row, "Proxima Etapa", "Próxima Etapa", "next_step"),
-                "note": col(row, "Observação", "Observacao", "note"),
+                "stage": col(row, "Status", "status", "stage") or "Planejamento",
+                "next_step": col(row, "Proxima Etapa", "Próxima Etapa", "proxima_etapa", "next_step"),
+                "note": col(row, "Observação", "Observacao", "observacao", "note"),
             }, "Migração")
             total_projects += 1
 
@@ -193,14 +193,14 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
 
             create_routine({
                 "title": title,
-                "description": col(row, "Descrição", "Descricao", "description"),
-                "department": dep(col(row, "Departamento", "department")),
-                "owner": col(row, "Responsavel", "Responsável", "owner"),
-                "frequency": freq(col(row, "Periodicidade", "frequency")),
-                "priority": priority(col(row, "Prioridade", "priority")),
-                "mandatory": yesno(col(row, "Obrigatoria", "Obrigatória", "mandatory")),
+                "description": col(row, "Descrição", "Descricao", "descricao", "description"),
+                "department": dep(col(row, "Departamento", "departamento", "department")),
+                "owner": col(row, "Responsavel", "Responsável", "responsavel", "owner"),
+                "frequency": freq(col(row, "Periodicidade", "periodicidade", "frequency")),
+                "priority": priority(col(row, "Prioridade", "prioridade", "priority")),
+                "mandatory": yesno(col(row, "Obrigatoria", "Obrigatória", "obrigatoria", "mandatory")),
                 "start_date": col(row, "Data de Inicio", "Data Início", "data_inicio", "start_date"),
-                "project": col(row, "Projeto", "project"),
+                "project": col(row, "Projeto", "projeto", "project"),
             }, "Migração")
             total_routines += 1
 
@@ -209,8 +209,8 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
         conn = connect(DB_PATH)
         for _, row in hist_df.iterrows():
             action = col(row, "Status", "Ação", "Acao", "action")
-            note = col(row, "Observação", "Observacao", "note")
-            user = col(row, "Usuário", "Usuario", "user")
+            note = col(row, "Observação", "Observacao", "observacao", "note")
+            user = col(row, "Usuário", "Usuario", "usuario", "user")
             data = col(row, "Data", "data", "event_date")
             tarefa = col(row, "Tarefa", "tarefa")
             conn.execute(
@@ -233,7 +233,177 @@ def migrate_backup(excel_path="Agenda.xlsx", force=False):
 
 def repair_from_backup(excel_path="Agenda.xlsx"):
     """
-    Reprocessa usuários, rotinas, projetos e histórico sem apagar dados.
-    Usa as regras de duplicidade do banco para evitar repetir rotinas/projetos iguais.
+    Reprocessa o backup e completa cadastros que entraram sem responsável
+    ou sem classificação.
     """
-    return migrate_backup(excel_path, force=True)
+    migrate_backup(excel_path, force=True)
+    return repair_routines_from_backup(excel_path)
+
+
+def _normalized_text(value):
+    return norm(value)
+
+
+def _find_existing_routine(title, description):
+    routines = query_df(
+        """
+        SELECT *
+        FROM routines
+        WHERE LOWER(TRIM(title)) = LOWER(TRIM(?))
+        ORDER BY
+            CASE WHEN TRIM(COALESCE(owner, '')) = '' THEN 0 ELSE 1 END,
+            id
+        """,
+        (title,)
+    )
+
+    if routines.empty:
+        return None
+
+    source_description = _normalized_text(description)
+
+    if source_description:
+        exact = routines[
+            routines["description"].fillna("").apply(_normalized_text)
+            == source_description
+        ]
+        if not exact.empty:
+            return exact.iloc[0].to_dict()
+
+    # Quando não há descrição, escolhe primeiro um cadastro ainda incompleto.
+    incomplete = routines[
+        (routines["owner"].fillna("").astype(str).str.strip() == "")
+        | (routines["department"].fillna("").astype(str).str.strip() == "")
+    ]
+    if not incomplete.empty:
+        return incomplete.iloc[0].to_dict()
+
+    return routines.iloc[0].to_dict()
+
+
+def repair_routines_from_backup(excel_path="Agenda.xlsx"):
+    """
+    Completa os cadastros importados anteriormente sem responsável,
+    departamento, periodicidade, prioridade ou projeto.
+
+    Não apaga execuções, histórico ou observações.
+    """
+    excel_path = Path(excel_path)
+
+    if not excel_path.exists():
+        return False, "Arquivo Agenda.xlsx não encontrado."
+
+    xls = pd.ExcelFile(excel_path)
+    sh_tasks = find_sheet(xls, ["Tarefas"])
+
+    if not sh_tasks:
+        return False, "A aba Tarefas não foi encontrada no backup."
+
+    tasks_df = pd.read_excel(excel_path, sheet_name=sh_tasks, dtype=object)
+
+    updated = 0
+    created = 0
+    users_created = 0
+
+    for _, row in tasks_df.iterrows():
+        title = col(row, "Tarefa", "tarefa", "title")
+        if not title:
+            continue
+
+        description = col(
+            row,
+            "Descrição", "Descricao", "descricao", "description"
+        )
+        department = dep(
+            col(row, "Departamento", "departamento", "department")
+        )
+        owner = col(
+            row,
+            "Responsavel", "Responsável", "responsavel", "owner"
+        )
+        frequency_value = freq(
+            col(row, "Periodicidade", "periodicidade", "frequency")
+        )
+        priority_value = priority(
+            col(row, "Prioridade", "prioridade", "priority")
+        )
+        mandatory_value = yesno(
+            col(
+                row,
+                "Obrigatoria", "Obrigatória", "obrigatoria", "mandatory"
+            )
+        )
+        start_date = col(
+            row,
+            "Data de Inicio", "Data Início", "data_inicio", "start_date"
+        )
+        project = col(row, "Projeto", "projeto", "project")
+
+        # Garante que os responsáveis usados nas rotinas existam como usuários.
+        if owner:
+            for user_name in (
+                str(owner)
+                .replace("/", ",")
+                .replace(";", ",")
+                .replace("|", ",")
+                .split(",")
+            ):
+                user_name = user_name.strip()
+                if user_name:
+                    create_user(user_name, "Usuário", department)
+                    users_created += 1
+
+        existing = _find_existing_routine(title, description)
+
+        if existing:
+            exec_sql(
+                """
+                UPDATE routines
+                SET description=?,
+                    department=?,
+                    owner=?,
+                    frequency=?,
+                    priority=?,
+                    mandatory=?,
+                    start_date=?,
+                    project=?,
+                    active=1,
+                    updated_at=?
+                WHERE id=?
+                """,
+                (
+                    description,
+                    department,
+                    owner,
+                    frequency_value,
+                    priority_value,
+                    mandatory_value,
+                    start_date,
+                    project,
+                    "",
+                    int(existing["id"]),
+                )
+            )
+            updated += 1
+        else:
+            create_routine(
+                {
+                    "title": title,
+                    "description": description,
+                    "department": department,
+                    "owner": owner,
+                    "frequency": frequency_value,
+                    "priority": priority_value,
+                    "mandatory": mandatory_value,
+                    "start_date": start_date,
+                    "project": project,
+                },
+                "Reparação do backup"
+            )
+            created += 1
+
+    message = (
+        f"Cadastros reparados: {updated} rotinas atualizadas, "
+        f"{created} novas rotinas e responsáveis conferidos."
+    )
+    return True, message

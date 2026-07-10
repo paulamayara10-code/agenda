@@ -22,3 +22,14 @@ Correção técnica:
 - O módulo `db.py` foi renomeado para `first_ops_database.py`.
 - Todos os imports foram atualizados.
 - A alteração evita conflito com módulos externos chamados `db` no Streamlit Cloud.
+
+
+## FIRST OPS Enterprise 1.2
+
+Correções:
+- Responsáveis, departamentos e periodicidades passam a reconhecer os nomes
+  das colunas em minúsculas do backup.
+- A opção "Corrigir cadastros importados" completa as 44 rotinas já existentes,
+  sem apagar histórico ou execuções.
+- Tarefas compartilhadas continuam reconhecendo responsáveis separados por `/`.
+- O nome selecionado no campo Usuário passou a ter contraste forçado.

@@ -17,7 +17,7 @@ from first_ops_database import (
 from migrate import preview_backup, migrate_backup, repair_from_backup
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 1.1",
+    page_title="FIRST OPS Enterprise 1.2",
     page_icon="⚕️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -46,6 +46,24 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span { color:#0f172a
 .blue{background:#dbeafe;color:#1d4ed8}.green{background:#dcfce7;color:#15803d}.red{background:#fee2e2;color:#b91c1c}.yellow{background:#fef3c7;color:#b45309}.purple{background:#ede9fe;color:#6d28d9}.gray{background:#f1f5f9;color:#475569}.orange{background:#ffedd5;color:#c2410c}
 .task-title{font-size:18px;font-weight:900;color:#0f172a}.done{text-decoration:line-through;color:#94a3b8}
 .stButton>button{border-radius:13px;font-weight:800}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 12px !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] input,
+section[data-testid="stSidebar"] div[data-baseweb="select"] span,
+section[data-testid="stSidebar"] div[data-baseweb="select"] div {
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    font-weight: 700 !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] svg {
+    fill: #0f172a !important;
+    color: #0f172a !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -222,7 +240,7 @@ def filter_user(df, user):
 def sidebar():
     ensure_admin()
     st.sidebar.markdown("## ⚕️ FIRST OPS")
-    st.sidebar.markdown("### Gestão Operacional • 1.1")
+    st.sidebar.markdown("### Gestão Operacional • 1.2")
     st.sidebar.divider()
     users = list_users(True)
     names = users["name"].dropna().astype(str).tolist() if not users.empty else ["Paula"]
