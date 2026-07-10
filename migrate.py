@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-from first_ops_database import (
+from first_ops_database_v231 import (
     DB_PATH,
     connect,
     create_project,

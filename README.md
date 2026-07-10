@@ -86,3 +86,16 @@ Correções:
 - Importação e exportação em Excel.
 - Backup automático antes de alterações administrativas.
 - Visual em cards, sem tabela interativa pesada.
+
+
+## FIRST OPS Enterprise 2.3.1 — Importação corrigida
+
+- O módulo do banco foi renomeado para `first_ops_database_v231.py`.
+- Isso impede que o `app.py` carregue um arquivo antigo mantido no repositório ou no cache.
+- Incluído o import de `datetime`, usado no cadastro e na importação de novas rotinas.
+- O banco SQLite foi consolidado; arquivos temporários `.db-wal` e `.db-shm` foram removidos.
+
+### Publicação
+
+Substitua todos os arquivos da raiz do repositório pelos arquivos deste pacote.
+Não envie apenas o `app.py`.
