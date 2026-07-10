@@ -54,7 +54,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.3.2",
+    page_title="FIRST OPS Enterprise 2.3.3",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -846,25 +846,33 @@ def routines_page(user: str) -> None:
 
     admin = is_admin(user)
 
-    if not admin:
-        st.info(
-            "A inclusão e a edição de rotinas são restritas ao perfil "
-            "Administradora. Selecione a usuária Paula para administrar os cadastros."
+    st.info(
+        "Todos os usuários podem cadastrar, editar, duplicar, desativar e "
+        "reativar rotinas. Exclusão definitiva, importação em massa, "
+        "exportação administrativa e backup permanecem restritos à administradora."
+    )
+
+    a, b = st.columns([1.2, 3])
+
+    with a:
+        if st.button(
+            "➕ Nova rotina",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state["show_new_routine"] = True
+            st.session_state.pop("edit_routine_id", None)
+
+    with b:
+        st.caption(
+            "As alterações ficam registradas com usuário, data e hora. "
+            "Um backup é criado antes de mudanças críticas."
         )
 
     if admin:
-        a, b, c = st.columns([1.2, 1, 1])
+        a_admin, b_admin = st.columns(2)
 
-        with a:
-            if st.button(
-                "➕ Nova rotina",
-                type="primary",
-                use_container_width=True,
-            ):
-                st.session_state["show_new_routine"] = True
-                st.session_state.pop("edit_routine_id", None)
-
-        with b:
+        with a_admin:
             routines_export = list_routines(False)
             export_buffer = BytesIO()
             with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
@@ -882,7 +890,7 @@ def routines_page(user: str) -> None:
                 use_container_width=True,
             )
 
-        with c:
+        with b_admin:
             if st.button(
                 "💾 Backup agora",
                 use_container_width=True,
@@ -960,7 +968,7 @@ def routines_page(user: str) -> None:
                         )
                     st.rerun()
 
-    if st.session_state.get("show_new_routine") and admin:
+    if st.session_state.get("show_new_routine"):
         with st.expander("➕ Nova rotina", expanded=True):
             render_routine_form(
                 user,
@@ -975,7 +983,7 @@ def routines_page(user: str) -> None:
                 st.rerun()
 
     edit_id = st.session_state.get("edit_routine_id")
-    if edit_id and admin:
+    if edit_id:
         routine = get_routine(int(edit_id))
         if routine:
             with st.expander(
@@ -1128,69 +1136,66 @@ def routines_page(user: str) -> None:
                 st.markdown(tags, unsafe_allow_html=True)
 
             with actions:
-                if admin:
-                    if st.button(
-                        "✏️ Editar",
-                        key=f"edit_routine_{routine_id}",
-                        use_container_width=True,
-                    ):
-                        st.session_state["edit_routine_id"] = routine_id
-                        st.session_state.pop("show_new_routine", None)
-                        st.rerun()
+                if st.button(
+                    "✏️ Editar",
+                    key=f"edit_routine_{routine_id}",
+                    use_container_width=True,
+                ):
+                    st.session_state["edit_routine_id"] = routine_id
+                    st.session_state.pop("show_new_routine", None)
+                    st.rerun()
 
-                    if st.button(
-                        "📄 Duplicar",
-                        key=f"duplicate_routine_{routine_id}",
-                        use_container_width=True,
-                    ):
-                        new_id = duplicate_routine(routine_id, user)
-                        st.session_state["edit_routine_id"] = new_id
-                        st.success("Cópia criada. Ajuste os campos e salve.")
-                        st.rerun()
+                if st.button(
+                    "📄 Duplicar",
+                    key=f"duplicate_routine_{routine_id}",
+                    use_container_width=True,
+                ):
+                    new_id = duplicate_routine(routine_id, user)
+                    st.session_state["edit_routine_id"] = new_id
+                    st.success("Cópia criada. Ajuste os campos e salve.")
+                    st.rerun()
 
-                    toggle_label = (
-                        "⏸️ Desativar"
-                        if active
-                        else "▶️ Reativar"
+                toggle_label = (
+                    "⏸️ Desativar"
+                    if active
+                    else "▶️ Reativar"
+                )
+                if st.button(
+                    toggle_label,
+                    key=f"toggle_routine_{routine_id}",
+                    use_container_width=True,
+                ):
+                    set_routine_active(
+                        routine_id,
+                        not active,
+                        user,
                     )
-                    if st.button(
-                        toggle_label,
-                        key=f"toggle_routine_{routine_id}",
-                        use_container_width=True,
-                    ):
-                        set_routine_active(
-                            routine_id,
-                            not active,
-                            user,
-                        )
-                        st.rerun()
+                    st.rerun()
 
-                    if not active:
-                        with st.expander("🗑️ Excluir definitivamente"):
-                            confirm = st.checkbox(
-                                "Confirmo a exclusão desta rotina",
-                                key=f"confirm_delete_{routine_id}",
+                if admin and not active:
+                    with st.expander("🗑️ Excluir definitivamente"):
+                        confirm = st.checkbox(
+                            "Confirmo a exclusão desta rotina",
+                            key=f"confirm_delete_{routine_id}",
+                        )
+                        if st.button(
+                            "Excluir",
+                            key=f"delete_routine_{routine_id}",
+                            disabled=not confirm,
+                            use_container_width=True,
+                        ):
+                            deleted = delete_routine_permanently(
+                                routine_id,
+                                user,
                             )
-                            if st.button(
-                                "Excluir",
-                                key=f"delete_routine_{routine_id}",
-                                disabled=not confirm,
-                                use_container_width=True,
-                            ):
-                                deleted = delete_routine_permanently(
-                                    routine_id,
-                                    user,
+                            if deleted:
+                                st.success("Rotina excluída.")
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "Esta rotina já possui registros diários "
+                                    "e não pode ser excluída. Mantenha-a desativada."
                                 )
-                                if deleted:
-                                    st.success("Rotina excluída.")
-                                    st.rerun()
-                                else:
-                                    st.error(
-                                        "Esta rotina já possui registros diários "
-                                        "e não pode ser excluída. Mantenha-a desativada."
-                                    )
-                else:
-                    st.caption("Consulta")
 
 def projects_page(user: str) -> None:
     day = frame("Projetos", "Acompanhamento dos projetos da área")

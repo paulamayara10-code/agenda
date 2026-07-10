@@ -109,3 +109,17 @@ Correções:
 - Os botões Nova rotina, Editar, Duplicar, Desativar e Reativar ficam visíveis
   ao selecionar Paula.
 - Usuários comuns continuam com acesso apenas para consulta.
+
+
+## FIRST OPS Enterprise 2.3.3 — Rotinas Colaborativas
+
+Permissões:
+- Todos os usuários podem criar rotinas.
+- Todos os usuários podem editar rotinas.
+- Todos os usuários podem duplicar rotinas.
+- Todos os usuários podem desativar e reativar rotinas.
+- Somente administradora pode excluir definitivamente.
+- Somente administradora pode importar rotinas em massa, exportar a base
+  administrativa e executar backups manuais.
+- Todas as alterações continuam registradas no histórico.
+- Backups automáticos são preservados antes das alterações críticas.

@@ -1,0 +1,13 @@
+{
+  "version": "2.3.3",
+  "all_users_create": true,
+  "all_users_edit": true,
+  "all_users_duplicate": true,
+  "all_users_toggle_active": true,
+  "admin_only_permanent_delete": true,
+  "admin_only_bulk_import_export_backup": true,
+  "missing_controls": [],
+  "users": 5,
+  "routines": 44,
+  "projects": 3
+}
