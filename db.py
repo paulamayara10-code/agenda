@@ -376,3 +376,27 @@ def export_excel(path):
         list_executions(include_all=True).to_excel(writer, sheet_name="Execucoes", index=False)
         list_projects(False).to_excel(writer, sheet_name="Projetos", index=False)
         list_events().to_excel(writer, sheet_name="Historico", index=False)
+
+
+def get_execution(routine_id, execution_date):
+    return query_df(
+        "SELECT * FROM executions WHERE routine_id=? AND execution_date=? LIMIT 1",
+        (int(routine_id), execution_date),
+    )
+
+
+def materialize_execution(routine_id, execution_date):
+    """Cria a execução somente na primeira interação e devolve seu ID."""
+    current = get_execution(routine_id, execution_date)
+    if not current.empty:
+        return int(current.iloc[0]["id"])
+
+    routine = query_df("SELECT * FROM routines WHERE id=? AND active=1", (int(routine_id),))
+    if routine.empty:
+        raise ValueError("Rotina não encontrada ou inativa.")
+
+    create_execution_from_routine(routine.iloc[0], execution_date)
+    current = get_execution(routine_id, execution_date)
+    if current.empty:
+        raise RuntimeError("Não foi possível registrar a execução.")
+    return int(current.iloc[0]["id"])

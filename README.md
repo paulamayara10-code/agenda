@@ -1,26 +1,16 @@
-# FIRST OPS 3.0
+# FIRST OPS Enterprise
 
-Operational Control Center.
+Nesta versão, as tarefas são calculadas diretamente a partir das rotinas.
 
-1. Rode `streamlit run app.py`
-2. Acesse **Migração**
-3. Clique em **IMPORTAR BACKUP PARA O FIRST OPS**
-4. Vá em **Home** e gere o checklist do dia.
+- Abrir uma data não grava dezenas de execuções no banco.
+- A execução é criada somente ao iniciar, concluir, comentar, reprogramar ou cancelar.
+- Rotinas diárias, semanais, mensais e únicas aparecem automaticamente na data correta.
+- Pendências anteriores usam o último dia útil.
+- Base e Backup, Administração e Exportação ficam restritos ao perfil administrador.
 
+## Executar
 
-## FIRST OPS 3.1
-
-Correções:
-- Remove duplicidade da aba Coordenação.
-- Mostra quantos usuários, rotinas e projetos existem no banco.
-- Adiciona botão para reprocessar o backup sem apagar dados.
-- Se a aba Usuários falhar, também cria usuários a partir dos responsáveis das tarefas.
-
-
-## FIRST OPS 3.2
-
-- Geração automática do checklist ao abrir as telas operacionais.
-- Filtro de responsável compatível com tarefas compartilhadas como Paula/Gustavo.
-- Migração, backup, administração e exportação visíveis apenas para administradores.
-- Textos técnicos e genéricos substituídos por linguagem operacional.
-- Campo de usuário com maior contraste.
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
