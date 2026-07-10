@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
+from io import BytesIO
 import unicodedata
 
 import pandas as pd
@@ -43,13 +44,17 @@ from first_ops_database import (
     save_note,
     set_activity_status,
     update_routine,
+    get_routine,
+    set_routine_active,
+    duplicate_routine,
+    delete_routine_permanently,
     user_profile,
 )
 from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.2.2",
+    page_title="FIRST OPS Enterprise 2.3",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -624,61 +629,562 @@ def pending_page(user: str) -> None:
     activity_groups(previous, user, "previous")
 
 
+def routine_form_values(routine: dict | None = None) -> dict:
+    routine = routine or {}
+    return {
+        "title": normalize_text(routine.get("title")),
+        "description": normalize_text(routine.get("description")),
+        "department": normalize_text(routine.get("department")),
+        "owners": [
+            owner.strip()
+            for owner in normalize_text(routine.get("owners"))
+            .replace("/", ",")
+            .replace(";", ",")
+            .split(",")
+            if owner.strip()
+        ],
+        "frequency": normalize_text(routine.get("frequency")) or "Diária",
+        "due_rule": normalize_text(routine.get("due_rule")),
+        "priority": normalize_text(routine.get("priority")) or "Normal",
+        "mandatory": bool(routine.get("mandatory", 0)),
+        "project": normalize_text(routine.get("project")),
+        "start_date": pd.to_datetime(
+            routine.get("start_date"),
+            dayfirst=True,
+            errors="coerce",
+        ).date() if normalize_text(routine.get("start_date")) else ref_date(),
+        "active": bool(routine.get("active", 1)),
+    }
+
+
+def render_routine_form(
+    user: str,
+    users: list[str],
+    departments: list[str],
+    projects: list[str],
+    routine: dict | None = None,
+    form_key: str = "routine_form",
+    duplicate_mode: bool = False,
+) -> None:
+    values = routine_form_values(routine)
+    editing = routine is not None and not duplicate_mode
+
+    with st.form(form_key):
+        a, b = st.columns(2)
+
+        with a:
+            title = st.text_input(
+                "Atividade",
+                value=(
+                    f"{values['title']} - Cópia"
+                    if duplicate_mode
+                    else values["title"]
+                ),
+            )
+            description = st.text_area(
+                "Descrição",
+                value=values["description"],
+            )
+
+            default_department = (
+                departments.index(values["department"])
+                if values["department"] in departments
+                else 0
+            )
+            department = st.selectbox(
+                "Departamento",
+                departments,
+                index=default_department,
+            )
+
+            selected_owners = [
+                owner for owner in values["owners"] if owner in users
+            ]
+            owners = st.multiselect(
+                "Responsáveis",
+                users,
+                default=selected_owners,
+            )
+
+            default_project = (
+                projects.index(values["project"])
+                if values["project"] in projects
+                else 0
+            )
+            project = st.selectbox(
+                "Projeto",
+                projects,
+                index=default_project,
+            )
+
+        with b:
+            frequencies = [
+                "Diária", "Semanal", "Quinzenal",
+                "Mensal", "Anual", "Única",
+            ]
+            default_frequency = (
+                frequencies.index(values["frequency"])
+                if values["frequency"] in frequencies
+                else 0
+            )
+            frequency = st.selectbox(
+                "Periodicidade",
+                frequencies,
+                index=default_frequency,
+            )
+
+            help_text = {
+                "Diária": "Horário opcional, por exemplo: 17:30",
+                "Semanal": "Informe o dia da semana ou use a data inicial como referência.",
+                "Quinzenal": "Ex.: Dia 05 / Dia 18",
+                "Mensal": "Ex.: Dia 10",
+                "Anual": "Ex.: 15/03",
+                "Única": "A execução ocorrerá somente na data de início.",
+            }.get(frequency, "")
+
+            due_rule = st.text_input(
+                "Regra de execução",
+                value=values["due_rule"],
+                help=help_text,
+                placeholder="Ex.: Dia 10, Dia 05 / Dia 18 ou 17:30",
+            )
+
+            priorities = ["Normal", "Alta", "Crítica", "Baixa"]
+            default_priority = (
+                priorities.index(values["priority"])
+                if values["priority"] in priorities
+                else 0
+            )
+            priority = st.selectbox(
+                "Prioridade",
+                priorities,
+                index=default_priority,
+            )
+
+            mandatory = st.checkbox(
+                "Obrigatória",
+                value=values["mandatory"],
+            )
+            start_date = st.date_input(
+                "Data de início",
+                value=values["start_date"],
+            )
+
+            active = st.checkbox(
+                "Ativa",
+                value=values["active"],
+                disabled=not editing,
+            )
+
+        label = (
+            "Salvar alterações"
+            if editing
+            else "Criar rotina"
+        )
+        submitted = st.form_submit_button(
+            label,
+            type="primary",
+            use_container_width=True,
+        )
+
+    if submitted:
+        if not title.strip():
+            st.error("Informe o nome da atividade.")
+            return
+        if not owners:
+            st.error("Selecione pelo menos um responsável.")
+            return
+
+        payload = {
+            "source_id": (
+                routine.get("source_id")
+                if editing
+                else f"manual-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+            ),
+            "title": title.strip(),
+            "description": description.strip(),
+            "department": department,
+            "owners": "/".join(owners),
+            "frequency": frequency,
+            "due_rule": due_rule.strip(),
+            "priority": priority,
+            "mandatory": mandatory,
+            "project": project,
+            "start_date": br(start_date),
+            "active": active if editing else 1,
+        }
+
+        if editing:
+            update_routine(int(routine["id"]), payload, user)
+            st.session_state.pop("edit_routine_id", None)
+            st.success("Rotina atualizada.")
+        else:
+            create_snapshot()
+            create_routine(payload, user)
+            st.success("Rotina cadastrada.")
+
+        st.rerun()
+
+
 def routines_page(user: str) -> None:
-    day = frame("Rotinas", "Atividades recorrentes da operação")
-    users = list_users(True)["name"].tolist()
+    day = frame("Central de Rotinas", "Cadastro e manutenção das atividades recorrentes")
+
+    users = list_users(True)["name"].dropna().astype(str).tolist()
     departments = list_departments() or [
-        "Contas a Receber", "Contas a Pagar", "Contabilidade",
-        "Controladoria", "Tesouraria"
+        "Contas a Receber",
+        "Contas a Pagar",
+        "Contabilidade",
+        "Controladoria",
+        "Tesouraria",
     ]
-    project_names = [""] + (
-        list_projects(True)["name"].tolist() if not list_projects(True).empty else []
+    projects_frame = list_projects(True)
+    projects = [""] + (
+        projects_frame["name"].dropna().astype(str).tolist()
+        if not projects_frame.empty
+        else []
     )
 
-    if is_admin(user):
-        with st.expander("➕ Cadastrar rotina", expanded=False):
-            with st.form("new_routine"):
-                a, b = st.columns(2)
-                with a:
-                    title = st.text_input("Atividade")
-                    description = st.text_area("Descrição")
-                    department = st.selectbox("Departamento", departments)
-                    owners = st.multiselect("Responsáveis", users)
-                    project = st.selectbox("Projeto", project_names)
-                with b:
-                    frequency = st.selectbox("Periodicidade", ["Diária", "Mensal", "Quinzenal", "Semanal", "Única"])
-                    due_rule = st.text_input("Dia ou horário", placeholder="Ex.: Dia 10, Dia 05 / Dia 18 ou 17:30")
-                    priority = st.selectbox("Prioridade", ["Normal", "Alta", "Crítica", "Baixa"])
-                    mandatory = st.checkbox("Obrigatória")
-                    start_date = st.date_input("Data de início", value=day)
-                save = st.form_submit_button("Salvar rotina")
+    admin = is_admin(user)
 
-            if save:
-                if not title or not owners:
-                    st.error("Informe a atividade e pelo menos um responsável.")
-                else:
-                    create_routine(
-                        {
-                            "title": title,
-                            "description": description,
-                            "department": department,
-                            "owners": "/".join(owners),
-                            "frequency": frequency,
-                            "due_rule": due_rule,
-                            "priority": priority,
-                            "mandatory": mandatory,
-                            "project": project,
-                            "start_date": br(start_date),
-                        },
-                        user,
+    if admin:
+        a, b, c = st.columns([1.2, 1, 1])
+
+        with a:
+            if st.button(
+                "➕ Nova rotina",
+                type="primary",
+                use_container_width=True,
+            ):
+                st.session_state["show_new_routine"] = True
+                st.session_state.pop("edit_routine_id", None)
+
+        with b:
+            routines_export = list_routines(False)
+            export_buffer = BytesIO()
+            with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
+                routines_export.to_excel(
+                    writer,
+                    sheet_name="Rotinas",
+                    index=False,
+                )
+
+            st.download_button(
+                "📤 Exportar rotinas",
+                data=export_buffer.getvalue(),
+                file_name=f"FIRST_OPS_Rotinas_{date.today().isoformat()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+        with c:
+            if st.button(
+                "💾 Backup agora",
+                use_container_width=True,
+            ):
+                create_full_backup_package()
+                cleanup_old_backups(30)
+                st.success("Backup criado.")
+
+        with st.expander("📥 Importar rotinas por Excel"):
+            st.caption(
+                "O arquivo deve possuir as colunas: title, description, "
+                "department, owners, frequency, due_rule, priority, "
+                "mandatory, project e start_date."
+            )
+            upload = st.file_uploader(
+                "Arquivo Excel",
+                type=["xlsx"],
+                key="routine_import_file",
+            )
+
+            if upload is not None:
+                imported = pd.read_excel(upload, dtype=object)
+                required = {"title", "owners"}
+                missing = required.difference(imported.columns)
+
+                if missing:
+                    st.error(
+                        "Colunas obrigatórias ausentes: "
+                        + ", ".join(sorted(missing))
                     )
-                    st.success("Rotina cadastrada.")
+                elif st.button("Importar cadastros", type="primary"):
+                    create_full_backup_package()
+                    imported_count = 0
+                    errors = []
+
+                    for index, row in imported.iterrows():
+                        try:
+                            title = normalize_text(row.get("title"))
+                            owners_value = normalize_text(row.get("owners"))
+                            if not title or not owners_value:
+                                continue
+
+                            create_routine(
+                                {
+                                    "source_id": (
+                                        normalize_text(row.get("source_id"))
+                                        or f"excel-{datetime.now().strftime('%Y%m%d%H%M%S%f')}-{index}"
+                                    ),
+                                    "title": title,
+                                    "description": normalize_text(row.get("description")),
+                                    "department": normalize_text(row.get("department")),
+                                    "owners": owners_value,
+                                    "frequency": normalize_text(row.get("frequency")) or "Diária",
+                                    "due_rule": normalize_text(row.get("due_rule")),
+                                    "priority": normalize_text(row.get("priority")) or "Normal",
+                                    "mandatory": str(row.get("mandatory", "")).strip().lower() in {
+                                        "1", "sim", "s", "true"
+                                    },
+                                    "project": normalize_text(row.get("project")),
+                                    "start_date": normalize_text(row.get("start_date")) or br(day),
+                                },
+                                user,
+                            )
+                            imported_count += 1
+                        except Exception as exc:
+                            errors.append(f"Linha {index + 2}: {exc}")
+
+                    st.success(
+                        f"{imported_count} rotina(s) importada(s)."
+                    )
+                    if errors:
+                        st.warning(
+                            "Algumas linhas não foram importadas:\n"
+                            + "\n".join(errors[:10])
+                        )
                     st.rerun()
 
-    routines = list_routines(True)
-    columns = ["id", "title", "description", "department", "owners", "frequency", "due_rule", "priority", "project"]
-    st.dataframe(routines[columns], use_container_width=True, hide_index=True)
+    if st.session_state.get("show_new_routine") and admin:
+        with st.expander("➕ Nova rotina", expanded=True):
+            render_routine_form(
+                user,
+                users,
+                departments,
+                projects,
+                routine=None,
+                form_key="new_routine_form",
+            )
+            if st.button("Fechar cadastro", key="close_new_routine"):
+                st.session_state.pop("show_new_routine", None)
+                st.rerun()
 
+    edit_id = st.session_state.get("edit_routine_id")
+    if edit_id and admin:
+        routine = get_routine(int(edit_id))
+        if routine:
+            with st.expander(
+                f"✏️ Editar: {routine['title']}",
+                expanded=True,
+            ):
+                render_routine_form(
+                    user,
+                    users,
+                    departments,
+                    projects,
+                    routine=routine,
+                    form_key=f"edit_routine_form_{edit_id}",
+                )
+                if st.button(
+                    "Cancelar edição",
+                    key=f"cancel_edit_{edit_id}",
+                ):
+                    st.session_state.pop("edit_routine_id", None)
+                    st.rerun()
+
+    routines = list_routines(False)
+
+    if routines.empty:
+        st.info("Nenhuma rotina cadastrada.")
+        return
+
+    st.markdown("### 🔎 Localizar rotinas")
+    f1, f2, f3, f4 = st.columns(4)
+
+    with f1:
+        search = st.text_input(
+            "Pesquisar",
+            placeholder="Atividade, responsável ou projeto...",
+        )
+    with f2:
+        department_filter = st.selectbox(
+            "Departamento",
+            ["Todos"] + departments,
+        )
+    with f3:
+        owner_filter = st.selectbox(
+            "Responsável",
+            ["Todos"] + users,
+        )
+    with f4:
+        status_filter = st.selectbox(
+            "Situação",
+            ["Ativas", "Inativas", "Todas"],
+        )
+
+    f5, f6 = st.columns(2)
+    with f5:
+        frequency_filter = st.selectbox(
+            "Periodicidade",
+            ["Todas", "Diária", "Semanal", "Quinzenal", "Mensal", "Anual", "Única"],
+        )
+    with f6:
+        project_filter = st.selectbox(
+            "Projeto",
+            ["Todos"] + [p for p in projects if p],
+        )
+
+    filtered = routines.copy()
+
+    if search.strip():
+        needle = search.strip().casefold()
+        filtered = filtered[
+            filtered.apply(
+                lambda row: needle in " ".join(
+                    [
+                        normalize_text(row.get("title")),
+                        normalize_text(row.get("description")),
+                        normalize_text(row.get("owners")),
+                        normalize_text(row.get("project")),
+                    ]
+                ).casefold(),
+                axis=1,
+            )
+        ]
+
+    if department_filter != "Todos":
+        filtered = filtered[
+            filtered["department"].astype(str) == department_filter
+        ]
+
+    if owner_filter != "Todos":
+        filtered = filtered[
+            filtered["owners"].apply(
+                lambda value: owner_matches(value, owner_filter)
+            )
+        ]
+
+    if status_filter == "Ativas":
+        filtered = filtered[filtered["active"] == 1]
+    elif status_filter == "Inativas":
+        filtered = filtered[filtered["active"] == 0]
+
+    if frequency_filter != "Todas":
+        filtered = filtered[
+            filtered["frequency"].astype(str) == frequency_filter
+        ]
+
+    if project_filter != "Todos":
+        filtered = filtered[
+            filtered["project"].astype(str) == project_filter
+        ]
+
+    st.caption(
+        f"{len(filtered)} rotina(s) encontrada(s)."
+    )
+
+    for _, row in filtered.iterrows():
+        routine_id = int(row["id"])
+        active = bool(row.get("active", 1))
+
+        with st.container(border=True):
+            left, actions = st.columns([4.8, 1.7])
+
+            with left:
+                status_label = "Ativa" if active else "Inativa"
+                status_class_name = "green" if active else "gray"
+
+                st.markdown(
+                    f"### 📋 {normalize_text(row.get('title'))}"
+                )
+
+                if normalize_text(row.get("description")):
+                    st.caption(normalize_text(row.get("description")))
+
+                tags = (
+                    f"<span class='tag {status_class_name}'>{status_label}</span>"
+                    f"<span class='tag blue'>🏢 {normalize_text(row.get('department'))}</span>"
+                    f"<span class='tag green'>👤 {normalize_text(row.get('owners'))}</span>"
+                    f"<span class='tag purple'>🔁 {normalize_text(row.get('frequency'))}</span>"
+                )
+
+                if normalize_text(row.get("due_rule")):
+                    tags += (
+                        f"<span class='tag yellow'>📅 "
+                        f"{normalize_text(row.get('due_rule'))}</span>"
+                    )
+
+                if normalize_text(row.get("project")):
+                    tags += (
+                        f"<span class='tag purple'>📁 "
+                        f"{normalize_text(row.get('project'))}</span>"
+                    )
+
+                st.markdown(tags, unsafe_allow_html=True)
+
+            with actions:
+                if admin:
+                    if st.button(
+                        "✏️ Editar",
+                        key=f"edit_routine_{routine_id}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["edit_routine_id"] = routine_id
+                        st.session_state.pop("show_new_routine", None)
+                        st.rerun()
+
+                    if st.button(
+                        "📄 Duplicar",
+                        key=f"duplicate_routine_{routine_id}",
+                        use_container_width=True,
+                    ):
+                        new_id = duplicate_routine(routine_id, user)
+                        st.session_state["edit_routine_id"] = new_id
+                        st.success("Cópia criada. Ajuste os campos e salve.")
+                        st.rerun()
+
+                    toggle_label = (
+                        "⏸️ Desativar"
+                        if active
+                        else "▶️ Reativar"
+                    )
+                    if st.button(
+                        toggle_label,
+                        key=f"toggle_routine_{routine_id}",
+                        use_container_width=True,
+                    ):
+                        set_routine_active(
+                            routine_id,
+                            not active,
+                            user,
+                        )
+                        st.rerun()
+
+                    if not active:
+                        with st.expander("🗑️ Excluir definitivamente"):
+                            confirm = st.checkbox(
+                                "Confirmo a exclusão desta rotina",
+                                key=f"confirm_delete_{routine_id}",
+                            )
+                            if st.button(
+                                "Excluir",
+                                key=f"delete_routine_{routine_id}",
+                                disabled=not confirm,
+                                use_container_width=True,
+                            ):
+                                deleted = delete_routine_permanently(
+                                    routine_id,
+                                    user,
+                                )
+                                if deleted:
+                                    st.success("Rotina excluída.")
+                                    st.rerun()
+                                else:
+                                    st.error(
+                                        "Esta rotina já possui registros diários "
+                                        "e não pode ser excluída. Mantenha-a desativada."
+                                    )
+                else:
+                    st.caption("Consulta")
 
 def projects_page(user: str) -> None:
     day = frame("Projetos", "Acompanhamento dos projetos da área")

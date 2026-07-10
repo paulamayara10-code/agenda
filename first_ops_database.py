@@ -272,6 +272,106 @@ def list_routines(active_only: bool = True) -> pd.DataFrame:
     return query(f"SELECT * FROM routines {where} ORDER BY department, owners, title, description")
 
 
+
+def get_routine(routine_id: int) -> dict | None:
+    frame = query("SELECT * FROM routines WHERE id=?", (routine_id,))
+    return None if frame.empty else frame.iloc[0].to_dict()
+
+
+def log_admin_action(user: str, action: str, note: str = "", routine_id: int | None = None) -> None:
+    execute(
+        """
+        INSERT INTO activity_events(
+            activity_id, routine_id, event_date, event_time,
+            user_name, action, note, created_at
+        )
+        VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            routine_id,
+            date.today().isoformat(),
+            datetime.now().strftime("%H:%M:%S"),
+            user,
+            action,
+            normalize_text(note),
+            now_br(),
+        ),
+    )
+
+
+def set_routine_active(routine_id: int, active: bool, user: str) -> None:
+    create_snapshot()
+    execute(
+        "UPDATE routines SET active=?, updated_at=? WHERE id=?",
+        (1 if active else 0, now_br(), routine_id),
+    )
+    routine = get_routine(routine_id) or {}
+    action = "Rotina reativada" if active else "Rotina desativada"
+    log_admin_action(user, action, routine.get("title", ""), routine_id)
+
+
+def duplicate_routine(routine_id: int, user: str) -> int:
+    source = get_routine(routine_id)
+    if not source:
+        return 0
+
+    create_snapshot()
+    base_title = normalize_text(source.get("title"))
+    title = f"{base_title} - Cópia"
+    suffix = 2
+
+    while not query(
+        "SELECT id FROM routines WHERE LOWER(title)=LOWER(?)",
+        (title,),
+    ).empty:
+        title = f"{base_title} - Cópia {suffix}"
+        suffix += 1
+
+    new_id = create_routine(
+        {
+            "source_id": f"copy-{routine_id}-{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+            "title": title,
+            "description": source.get("description", ""),
+            "department": source.get("department", ""),
+            "owners": source.get("owners", ""),
+            "frequency": source.get("frequency", "Diária"),
+            "due_rule": source.get("due_rule", ""),
+            "priority": source.get("priority", "Normal"),
+            "mandatory": bool(source.get("mandatory", 0)),
+            "project": source.get("project", ""),
+            "start_date": source.get("start_date", ""),
+        },
+        user,
+    )
+    log_admin_action(user, "Rotina duplicada", title, new_id)
+    return new_id
+
+
+def delete_routine_permanently(routine_id: int, user: str) -> bool:
+    """
+    Exclusão definitiva somente quando a rotina ainda não possui execuções.
+    """
+    executions = query(
+        "SELECT COUNT(*) AS total FROM daily_activities WHERE routine_id=?",
+        (routine_id,),
+    )
+    total = int(executions.iloc[0]["total"]) if not executions.empty else 0
+
+    if total > 0:
+        return False
+
+    routine = get_routine(routine_id) or {}
+    create_snapshot()
+    execute("DELETE FROM routines WHERE id=?", (routine_id,))
+    log_admin_action(
+        user,
+        "Rotina excluída definitivamente",
+        routine.get("title", ""),
+        routine_id,
+    )
+    return True
+
+
 def create_routine(data: dict, user: str) -> int:
     routine_id = execute(
         """
@@ -313,10 +413,17 @@ def create_routine(data: dict, user: str) -> int:
             now_br(),
         ),
     )
+    log_admin_action(
+        user,
+        "Rotina criada",
+        normalize_text(data.get("title")),
+        routine_id,
+    )
     return routine_id
 
 
 def update_routine(routine_id: int, data: dict, user: str) -> None:
+    create_snapshot()
     execute(
         """
         UPDATE routines SET
@@ -340,6 +447,12 @@ def update_routine(routine_id: int, data: dict, user: str) -> None:
             now_br(),
             routine_id,
         ),
+    )
+    log_admin_action(
+        user,
+        "Rotina alterada",
+        normalize_text(data.get("title")),
+        routine_id,
     )
 
 

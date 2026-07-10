@@ -73,3 +73,16 @@ Correções:
 - Os colaboradores são exibidos em cards leves.
 - É possível abrir as atividades de cada pessoa individualmente.
 - PyArrow fixado em `20.0.0` para evitar falhas nativas no Streamlit Cloud.
+
+
+## FIRST OPS Enterprise 2.3 — Central de Rotinas
+
+- Cadastro de novas rotinas.
+- Pesquisa e filtros.
+- Edição por formulário.
+- Duplicação de rotinas.
+- Desativação e reativação.
+- Exclusão definitiva somente para rotinas sem registro diário.
+- Importação e exportação em Excel.
+- Backup automático antes de alterações administrativas.
+- Visual em cards, sem tabela interativa pesada.

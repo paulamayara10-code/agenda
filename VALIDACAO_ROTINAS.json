@@ -1,0 +1,7 @@
+{
+  "version": "2.3",
+  "routine_crud": true,
+  "routine_search_filters": true,
+  "routine_excel_import_export": true,
+  "backup_before_admin_changes": true
+}
