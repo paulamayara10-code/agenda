@@ -1,0 +1,9 @@
+{
+  "version": "2.2",
+  "users": 5,
+  "routines": 44,
+  "projects": 3,
+  "go_live": "2026-07-10",
+  "individual_home": true,
+  "backup_retention": 30
+}

@@ -40,3 +40,15 @@ O banco desta versão é `data/first_ops_enterprise2.db`, portanto não usa banc
 - Sábados e domingos não geram atividades.
 - O backfill nunca cria atividades anteriores ao Go Live.
 - Incluído indicador de atividades com prazo/horário no dia.
+
+
+## FIRST OPS Enterprise 2.2 — Praticidade e Backup
+
+- A tela inicial agora é individual.
+- Totais gerais permanecem nas telas Equipe e Coordenação.
+- Checklist rápido para concluir atividades.
+- Detalhes, observações, reprogramação e cancelamento ficam recolhidos.
+- Backup automático diário.
+- Backup completo manual em um clique.
+- Mantidas as 30 cópias mais recentes.
+- Download direto do Excel e do SQLite.

@@ -18,6 +18,9 @@ from first_ops_database import (
     create_project,
     create_routine,
     create_snapshot,
+    create_full_backup_package,
+    list_backup_files,
+    cleanup_old_backups,
     create_user,
     daily_backup,
     ensure_activities,
@@ -46,7 +49,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.1",
+    page_title="FIRST OPS Enterprise 2.2",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -228,7 +231,7 @@ def sidebar():
         if plain(item) not in fixed
     ]
 
-    menu = ["Início", "Meu Dia", "Equipe", "Coordenação"]
+    menu = ["Meu Painel", "Meu Dia", "Equipe", "Coordenação"]
     menu += departments
     menu += ["Pendências", "Rotinas", "Projetos", "Histórico"]
 
@@ -252,19 +255,29 @@ def status_class(status: str) -> str:
 def activity_card(row: pd.Series, user: str, prefix: str) -> None:
     activity_id = int(row["id"])
     status = normalize_text(row.get("status")) or "Pendente"
-    title_class = "task-done" if status == "Concluída" else "task-title"
+    title = normalize_text(row.get("title"))
+    description = normalize_text(row.get("description"))
 
     with st.container(border=True):
-        left, right = st.columns([4.8, 1.35])
+        left, right = st.columns([5.2, 1.15])
 
         with left:
-            description = normalize_text(row.get("description"))
-            title = normalize_text(row.get("title"))
-
-            st.markdown(
-                f"<div class='{title_class}'>{title}</div>",
-                unsafe_allow_html=True,
+            checked = status == "Concluída"
+            new_checked = st.checkbox(
+                title,
+                value=checked,
+                key=f"check_{prefix}_{activity_id}",
+                disabled=checked,
             )
+
+            if new_checked and not checked:
+                set_activity_status(
+                    activity_id,
+                    "Concluída",
+                    user,
+                    "Concluída pelo checklist rápido",
+                )
+                st.rerun()
 
             if description:
                 st.caption(description)
@@ -290,17 +303,19 @@ def activity_card(row: pd.Series, user: str, prefix: str) -> None:
         with right:
             if status == "Concluída":
                 st.success("Concluída")
+            elif status == "Em andamento":
+                st.warning("Em andamento")
             else:
-                if status != "Em andamento":
-                    if st.button("▶ Iniciar", key=f"start_{prefix}_{activity_id}"):
-                        set_activity_status(activity_id, "Em andamento", user, "Atividade iniciada")
-                        st.rerun()
-
-                if st.button("✅ Concluir", key=f"done_{prefix}_{activity_id}"):
-                    set_activity_status(activity_id, "Concluída", user, "Atividade concluída")
+                if st.button("▶ Iniciar", key=f"start_{prefix}_{activity_id}", use_container_width=True):
+                    set_activity_status(
+                        activity_id,
+                        "Em andamento",
+                        user,
+                        "Atividade iniciada",
+                    )
                     st.rerun()
 
-        with st.expander("💬 Observação, reprogramação ou cancelamento"):
+        with st.expander("💬 Detalhes"):
             note = st.text_area(
                 "Observação",
                 key=f"note_{prefix}_{activity_id}",
@@ -323,14 +338,22 @@ def activity_card(row: pd.Series, user: str, prefix: str) -> None:
                     key=f"new_day_{prefix}_{activity_id}",
                 )
                 if st.button("Reprogramar", key=f"reschedule_{prefix}_{activity_id}"):
-                    reschedule_activity(activity_id, user, new_day, note or "Atividade reprogramada")
+                    reschedule_activity(
+                        activity_id,
+                        user,
+                        new_day,
+                        note or "Atividade reprogramada",
+                    )
                     st.rerun()
 
             with c:
                 if st.button("Cancelar", key=f"cancel_{prefix}_{activity_id}"):
-                    cancel_activity(activity_id, user, note or "Atividade cancelada")
+                    cancel_activity(
+                        activity_id,
+                        user,
+                        note or "Atividade cancelada",
+                    )
                     st.rerun()
-
 
 def activity_groups(frame_data: pd.DataFrame, user: str, prefix: str) -> None:
     if frame_data.empty:
@@ -348,46 +371,45 @@ def activity_groups(frame_data: pd.DataFrame, user: str, prefix: str) -> None:
 
 
 def home(user: str) -> None:
-    day = frame("Visão Geral", "Acompanhamento das atividades da equipe")
+    day = frame("Meu Painel", f"Prioridades de {user}")
     ensure_activities(day)
 
-    activities = list_activities(day)
-    pending = activities[
-        ~activities["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
-    ] if not activities.empty else activities
-    progress = activities[activities["status"] == "Em andamento"] if not activities.empty else activities
-    completed = activities[activities["status"] == "Concluída"] if not activities.empty else activities
-    previous = list_previous_pending(day)
+    mine = list_user_activities(day, user)
+    previous = list_previous_pending(day, user)
+
+    if mine.empty:
+        pending = progress = completed = mine
+    else:
+        pending = mine[
+            ~mine["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
+        ]
+        progress = mine[mine["status"] == "Em andamento"]
+        completed = mine[mine["status"] == "Concluída"]
 
     st.markdown(
         f"""
         <div class='hero'>
             <h1>Olá, {user} 👋</h1>
-            <p>Atividades e prioridades de {br(day)}.</p>
+            <p>Suas atividades e prioridades de {br(day)}.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    due_today = activities[
-        (activities["due_time"].fillna("").astype(str).str.strip() != "")
-        & (~activities["status"].isin(["Concluída", "Cancelada", "Reprogramada"]))
-    ] if not activities.empty else activities
-
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1: metric("Programadas", len(activities), br(day), "#2563eb")
-    with c2: metric("Pendentes", len(pending), "Aguardando conclusão", "#f59e0b")
-    with c3: metric("Em andamento", len(progress), "Atividades iniciadas", "#f97316")
-    with c4: metric("Pendências anteriores", len(previous), "Somente após o Go Live", "#dc2626")
-    with c5: metric("Prazo hoje", len(due_today), "Com horário definido", "#7c3aed")
-    with c6: metric("Concluídas", len(completed), "Na data selecionada", "#16a34a")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: metric("Pendentes", len(pending), br(day), "#f59e0b")
+    with c2: metric("Em andamento", len(progress), "Atividades iniciadas", "#f97316")
+    with c3: metric("Pendências anteriores", len(previous), "Somente suas", "#dc2626")
+    with c4: metric("Concluídas", len(completed), "Na data selecionada", "#16a34a")
 
     st.markdown("<div class='panel'><div class='panel-title'>⭐ Minhas prioridades</div>", unsafe_allow_html=True)
-    mine = list_user_activities(day, user)
-    mine = mine[~mine["status"].isin(["Concluída", "Cancelada", "Reprogramada"])] if not mine.empty else mine
-    activity_groups(mine, user, "home")
+    activity_groups(pending, user, "home")
     st.markdown("</div>", unsafe_allow_html=True)
 
+    if not previous.empty:
+        st.markdown("<div class='panel'><div class='panel-title'>🔴 Minhas pendências anteriores</div>", unsafe_allow_html=True)
+        activity_groups(previous, user, "home_previous")
+        st.markdown("</div>", unsafe_allow_html=True)
 
 def my_day(user: str) -> None:
     day = frame("Meu Dia", f"Atividades atribuídas a {user}")
@@ -410,7 +432,7 @@ def my_day(user: str) -> None:
 
 
 def team(user: str) -> None:
-    day = frame("Equipe", "Distribuição e andamento das atividades")
+    day = frame("Equipe", "Visão geral por colaborador")
     activities = list_activities(day)
 
     if activities.empty:
@@ -601,53 +623,75 @@ def administration_page(user: str) -> None:
 
 
 def backup_page(user: str) -> None:
-    day = frame("Base e Backup", "Segurança e exportação dos registros")
+    day = frame("Base e Backup", "Segurança, cópias e exportação")
     if not is_admin(user):
         st.error("Acesso restrito.")
         return
 
     export_path = Path("FIRST_OPS_Backup.xlsx")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
+
     with c1:
-        if st.button("Gerar backup Excel", type="primary"):
-            export_excel(export_path)
-            st.success("Backup Excel gerado.")
-        if export_path.exists():
-            st.download_button(
-                "Baixar backup Excel",
-                data=export_path.read_bytes(),
-                file_name=f"FIRST_OPS_Backup_{date.today().isoformat()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+        if st.button("Criar backup completo agora", type="primary", use_container_width=True):
+            create_full_backup_package()
+            cleanup_old_backups(30)
+            st.success("Backup completo criado.")
 
     with c2:
-        if st.button("Criar cópia do banco"):
+        if st.button("Gerar Excel para conferência", use_container_width=True):
+            export_excel(export_path)
+            st.success("Arquivo Excel gerado.")
+
+    with c3:
+        if st.button("Criar cópia do banco", use_container_width=True):
             path = create_snapshot()
+            cleanup_old_backups(30)
             st.success(f"Cópia criada: {path.name}")
-        if DB_PATH.exists():
-            st.download_button(
-                "Baixar banco SQLite",
-                data=DB_PATH.read_bytes(),
-                file_name=f"first_ops_{date.today().isoformat()}.db",
-                mime="application/octet-stream",
-            )
+
+    if export_path.exists():
+        st.download_button(
+            "Baixar backup Excel",
+            data=export_path.read_bytes(),
+            file_name=f"FIRST_OPS_Backup_{date.today().isoformat()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+    if DB_PATH.exists():
+        st.download_button(
+            "Baixar banco SQLite",
+            data=DB_PATH.read_bytes(),
+            file_name=f"first_ops_{date.today().isoformat()}.db",
+            mime="application/octet-stream",
+            use_container_width=True,
+        )
 
     st.info(
-        "O sistema cria automaticamente uma cópia local do banco por dia. "
-        "Use os botões acima para baixar uma cópia externa."
+        "O sistema cria automaticamente uma cópia local por dia e mantém "
+        "as 30 cópias mais recentes."
     )
+
+    backups = list_backup_files()
+    if backups.empty:
+        st.caption("Nenhuma cópia local registrada.")
+    else:
+        st.markdown("### Cópias disponíveis")
+        st.dataframe(
+            backups[["arquivo", "tamanho_kb", "modificado_em"]],
+            use_container_width=True,
+            hide_index=True,
+        )
 
     st.success(
         f"O dia {br(GO_LIVE_DATE)} é o marco zero da operação. "
         "Nenhuma pendência anterior a essa data será contabilizada."
     )
 
-
 def main() -> None:
     user, page, departments = sidebar()
 
-    if page == "Início":
+    if page == "Meu Painel":
         home(user)
     elif page == "Meu Dia":
         my_day(user)

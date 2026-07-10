@@ -737,6 +737,46 @@ def create_snapshot() -> Path:
     return path
 
 
+
+def list_backup_files() -> pd.DataFrame:
+    rows = []
+    for file in sorted(BACKUP_DIR.glob("*"), reverse=True):
+        if file.is_file():
+            stat = file.stat()
+            rows.append({
+                "arquivo": file.name,
+                "tamanho_kb": round(stat.st_size / 1024, 1),
+                "modificado_em": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M:%S"),
+                "caminho": str(file),
+            })
+    return pd.DataFrame(rows)
+
+
+def cleanup_old_backups(keep_last: int = 30) -> int:
+    files = sorted(
+        [f for f in BACKUP_DIR.glob("*.db") if f.is_file()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    removed = 0
+    for file in files[keep_last:]:
+        try:
+            file.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def create_full_backup_package() -> Path:
+    """
+    Cria uma cópia instantânea do banco e uma exportação Excel.
+    """
+    snapshot = create_snapshot()
+    excel_path = BACKUP_DIR / f"FIRST_OPS_Backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    export_excel(excel_path)
+    return snapshot
+
 def export_excel(path: Path) -> Path:
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         list_users(False).to_excel(writer, "Usuarios", index=False)
