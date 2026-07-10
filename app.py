@@ -10,7 +10,7 @@ import unicodedata
 import pandas as pd
 import streamlit as st
 
-from first_ops_database_v231 import (
+from first_ops_database_v232 import (
     BACKUP_DIR,
     GO_LIVE_DATE,
     DB_PATH,
@@ -54,7 +54,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.3.1",
+    page_title="FIRST OPS Enterprise 2.3.2",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -845,6 +845,12 @@ def routines_page(user: str) -> None:
     )
 
     admin = is_admin(user)
+
+    if not admin:
+        st.info(
+            "A inclusão e a edição de rotinas são restritas ao perfil "
+            "Administradora. Selecione a usuária Paula para administrar os cadastros."
+        )
 
     if admin:
         a, b, c = st.columns([1.2, 1, 1])

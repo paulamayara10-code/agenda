@@ -1,0 +1,15 @@
+{
+  "version": "2.3.2",
+  "database_module": "first_ops_database_v232.py",
+  "paula_role": "Administradora",
+  "crud_controls": [
+    "➕ Nova rotina",
+    "✏️ Editar",
+    "📄 Duplicar",
+    "⏸️ Desativar",
+    "▶️ Reativar"
+  ],
+  "missing_controls": [],
+  "users": 5,
+  "routines": 44
+}

@@ -99,3 +99,13 @@ Correções:
 
 Substitua todos os arquivos da raiz do repositório pelos arquivos deste pacote.
 Não envie apenas o `app.py`.
+
+
+## FIRST OPS Enterprise 2.3.2 — Cadastro de Rotinas visível
+
+Correções:
+- Paula restaurada como `Administradora`.
+- A importação não rebaixa mais administradores para `Usuário`.
+- Os botões Nova rotina, Editar, Duplicar, Desativar e Reativar ficam visíveis
+  ao selecionar Paula.
+- Usuários comuns continuam com acesso apenas para consulta.
