@@ -52,3 +52,15 @@ O banco desta versão é `data/first_ops_enterprise2.db`, portanto não usa banc
 - Backup completo manual em um clique.
 - Mantidas as 30 cópias mais recentes.
 - Download direto do Excel e do SQLite.
+
+
+## FIRST OPS Enterprise 2.2.1 — Ambiente Estável
+
+Correção de publicação no Streamlit Cloud:
+
+- Streamlit fixado em `1.48.1`.
+- pandas fixado em `2.3.3`.
+- NumPy fixado em `2.3.2`.
+- openpyxl fixado em `3.1.5`.
+- Python fixado na linha `3.11`.
+- Evita que o ambiente instale automaticamente versões futuras incompatíveis.

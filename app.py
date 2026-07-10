@@ -49,7 +49,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.2",
+    page_title="FIRST OPS Enterprise 2.2.1",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
