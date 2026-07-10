@@ -49,7 +49,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.2.1",
+    page_title="FIRST OPS Enterprise 2.2.2",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -434,39 +434,154 @@ def my_day(user: str) -> None:
 def team(user: str) -> None:
     day = frame("Equipe", "Visão geral por colaborador")
     activities = list_activities(day)
+    users = list_users(True)
 
-    if activities.empty:
-        st.info("Nenhuma atividade programada nesta data.")
+    if users.empty:
+        st.info("Nenhum usuário cadastrado.")
         return
 
-    rows = []
-    for person in list_users(True)["name"].tolist():
-        person_activities = activities[
-            activities["owners"].apply(lambda value: owner_matches(value, person))
-        ]
-        if person_activities.empty:
-            continue
+    summary_rows = []
+
+    for person in users["name"].dropna().astype(str).tolist():
+        if activities.empty:
+            person_activities = activities.copy()
+        else:
+            person_activities = activities[
+                activities["owners"].apply(
+                    lambda value: owner_matches(value, person)
+                )
+            ].copy()
 
         total = len(person_activities)
-        done = len(person_activities[person_activities["status"] == "Concluída"])
-        open_count = len(
+        completed = len(
+            person_activities[person_activities["status"] == "Concluída"]
+        ) if total else 0
+        in_progress = len(
+            person_activities[person_activities["status"] == "Em andamento"]
+        ) if total else 0
+        pending = len(
             person_activities[
-                ~person_activities["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
+                ~person_activities["status"].isin(
+                    ["Concluída", "Cancelada", "Reprogramada"]
+                )
             ]
-        )
-        rows.append(
+        ) if total else 0
+        progress_pct = round(completed / total * 100) if total else 0
+        previous = list_previous_pending(day, person)
+
+        summary_rows.append(
             {
-                "Pessoa": person,
-                "Departamento": user_profile(person).get("department", ""),
-                "Programadas": total,
-                "Pendentes": open_count,
-                "Concluídas": done,
-                "Progresso %": round(done / total * 100, 1) if total else 0,
+                "person": person,
+                "department": user_profile(person).get("department", ""),
+                "total": total,
+                "pending": pending,
+                "in_progress": in_progress,
+                "completed": completed,
+                "previous": len(previous),
+                "progress_pct": progress_pct,
             }
         )
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    total_programmed = sum(item["total"] for item in summary_rows)
+    total_pending = sum(item["pending"] for item in summary_rows)
+    total_completed = sum(item["completed"] for item in summary_rows)
+    total_previous = sum(item["previous"] for item in summary_rows)
 
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        metric("Programadas", total_programmed, br(day), "#2563eb")
+    with c2:
+        metric("Pendentes", total_pending, "Equipe", "#f59e0b")
+    with c3:
+        metric("Pendências anteriores", total_previous, "Equipe", "#dc2626")
+    with c4:
+        metric("Concluídas", total_completed, "Equipe", "#16a34a")
+
+    st.markdown(
+        "<div class='panel'><div class='panel-title'>👥 Colaboradores</div>",
+        unsafe_allow_html=True,
+    )
+
+    for item in summary_rows:
+        with st.container(border=True):
+            left, center, right = st.columns([2.4, 2.8, 1.2])
+
+            with left:
+                st.markdown(f"### 👤 {item['person']}")
+                st.caption(item["department"] or "Sem departamento")
+
+            with center:
+                p1, p2, p3, p4 = st.columns(4)
+                with p1:
+                    st.metric("Programadas", item["total"])
+                with p2:
+                    st.metric("Pendentes", item["pending"])
+                with p3:
+                    st.metric("Em andamento", item["in_progress"])
+                with p4:
+                    st.metric("Concluídas", item["completed"])
+
+                st.progress(
+                    min(max(item["progress_pct"], 0), 100) / 100,
+                    text=f"{item['progress_pct']}% concluído",
+                )
+
+                if item["previous"] > 0:
+                    st.warning(
+                        f"{item['previous']} pendência(s) anterior(es)"
+                    )
+
+            with right:
+                if st.button(
+                    "Ver atividades",
+                    key=f"team_view_{plain(item['person'])}",
+                    use_container_width=True,
+                ):
+                    st.session_state["team_selected_person"] = item["person"]
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    selected_person = st.session_state.get("team_selected_person")
+
+    if selected_person:
+        st.markdown(
+            f"<div class='panel'><div class='panel-title'>📋 Atividades de {selected_person}</div>",
+            unsafe_allow_html=True,
+        )
+
+        if activities.empty:
+            selected = activities.copy()
+        else:
+            selected = activities[
+                activities["owners"].apply(
+                    lambda value: owner_matches(value, selected_person)
+                )
+            ].copy()
+
+        show_finished = st.toggle(
+            "Exibir atividades finalizadas",
+            value=False,
+            key="team_show_finished",
+        )
+
+        if not show_finished and not selected.empty:
+            selected = selected[
+                ~selected["status"].isin(
+                    ["Concluída", "Cancelada", "Reprogramada"]
+                )
+            ]
+
+        activity_groups(
+            selected,
+            user,
+            f"team_{plain(selected_person)}",
+        )
+
+        if st.button("Fechar atividades", key="team_close_person"):
+            st.session_state.pop("team_selected_person", None)
+            st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 def coordination(user: str) -> None:
     day = frame("Coordenação", "Acompanhamento das entregas da equipe")

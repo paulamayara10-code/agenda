@@ -64,3 +64,12 @@ Correção de publicação no Streamlit Cloud:
 - openpyxl fixado em `3.1.5`.
 - Python fixado na linha `3.11`.
 - Evita que o ambiente instale automaticamente versões futuras incompatíveis.
+
+
+## FIRST OPS Enterprise 2.2.2 — Equipe Estável
+
+Correções:
+- A tela Equipe não utiliza mais `st.dataframe`.
+- Os colaboradores são exibidos em cards leves.
+- É possível abrir as atividades de cada pessoa individualmente.
+- PyArrow fixado em `20.0.0` para evitar falhas nativas no Streamlit Cloud.

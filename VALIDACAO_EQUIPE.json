@@ -1,0 +1,8 @@
+{
+  "version": "2.2.2",
+  "team_dataframe_removed": true,
+  "pyarrow": "20.0.0",
+  "streamlit": "1.48.1",
+  "pandas": "2.3.3",
+  "numpy": "2.3.2"
+}
