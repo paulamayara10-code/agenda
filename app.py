@@ -19,7 +19,7 @@ from migrate import preview_backup, migrate_backup, repair_from_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS 3.1",
+    page_title="FIRST OPS 3.2",
     page_icon="⚕️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -56,6 +56,17 @@ section[data-testid="stSidebar"] [data-baseweb="select"] span,
 section[data-testid="stSidebar"] [data-baseweb="select"] div {
     color:#0f172a !important;
 }
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background:#ffffff !important;
+    border:1px solid #cbd5e1 !important;
+    border-radius:12px !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+    color:#0f172a !important;
+    font-weight:700 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,6 +85,48 @@ def norm(v):
 
 def _menu_norm(value):
     return norm(value)
+
+
+
+def user_profile(user):
+    users = list_users(True)
+    if users.empty:
+        return {"role": "Usuário", "department": ""}
+
+    selected = users[users["name"].astype(str).str.lower() == str(user).lower()]
+    if selected.empty:
+        return {"role": "Usuário", "department": ""}
+
+    row = selected.iloc[0]
+    return {
+        "role": text(row.get("role")) or "Usuário",
+        "department": text(row.get("department")),
+    }
+
+
+def is_admin(user):
+    role = norm(user_profile(user).get("role"))
+    return role in ["administrador", "administradora", "admin"]
+
+
+def owner_matches(owner_value, user):
+    owner = text(owner_value)
+    target = norm(user)
+
+    if not owner or not target:
+        return False
+
+    names = owner.replace("/", ",").replace(";", ",").replace("|", ",").split(",")
+    normalized_names = [norm(name) for name in names if text(name)]
+
+    return target in normalized_names
+
+
+def filter_user_tasks(dataframe, user):
+    if dataframe.empty or "owner" not in dataframe.columns:
+        return dataframe
+
+    return dataframe[dataframe["owner"].apply(lambda value: owner_matches(value, user))]
 
 
 def today():
@@ -177,7 +230,7 @@ def date_bar():
     st.markdown("<div class='panel' style='padding:14px 18px'>", unsafe_allow_html=True)
     c1,c2,c3,c4,c5 = st.columns([1.1,1.2,.85,.7,2.5])
     with c1:
-        st.markdown("#### 📅 Dia operacional")
+        st.markdown("#### 📅 Data de referência")
     with c2:
         st.session_state["ref_date"] = st.date_input("Data", value=ref_date(), label_visibility="collapsed")
     with c3:
@@ -192,7 +245,7 @@ def date_bar():
             if is_business_day(ref_date()):
                 st.success(f"Dia útil: {br(ref_date())}")
             else:
-                st.warning("Fim de semana: rotinas não são geradas.")
+                st.warning("Data sem rotina operacional automática.")
     st.markdown("</div>", unsafe_allow_html=True)
     return ref_date()
 
@@ -209,25 +262,51 @@ def ensure_admin_seed():
 
 def sidebar():
     ensure_admin_seed()
+
     st.sidebar.markdown("## ⚕️ FIRST OPS")
-    st.sidebar.markdown("### Control Center 3.0")
+    st.sidebar.markdown("### Gestão Operacional")
     st.sidebar.divider()
 
     users = list_users(True)
-    names = users["name"].dropna().astype(str).tolist() if not users.empty else ["Paula"]
+    names = users["name"].dropna().astype(str).tolist() if not users.empty else []
+
+    if not names:
+        create_user("Paula", "Administradora", "Coordenação")
+        names = ["Paula"]
+
     user = st.sidebar.selectbox("Usuário", names)
+    profile = user_profile(user)
+
+    st.sidebar.caption(
+        f"{profile.get('role', 'Usuário')} • "
+        f"{profile.get('department') or 'Sem departamento'}"
+    )
+
+    fixed = {
+        "inicio", "meu dia", "equipe", "coordenacao", "pendencias",
+        "rotinas", "projetos", "historico", "administracao",
+        "base e backup", "exportar"
+    }
 
     deps = list_departments()
-    fixed = {"home", "migracao", "meu dia", "equipe", "coordenacao", "pendencias", "rotinas", "projetos", "historico", "administracao", "exportar"}
-    deps = sorted(list(dict.fromkeys([d for d in deps if text(d) and _menu_norm(d) not in fixed])))
+    deps = sorted(
+        list(
+            dict.fromkeys(
+                [d for d in deps if text(d) and _menu_norm(d) not in fixed]
+            )
+        )
+    )
 
-    menu = ["Home", "Migração", "Meu Dia", "Equipe", "Coordenação"] + deps + [
-        "Pendências", "Rotinas", "Projetos", "Histórico", "Administração", "Exportar"
-    ]
+    operational_menu = ["Início", "Meu Dia", "Equipe", "Coordenação"]
+    operational_menu += deps
+    operational_menu += ["Pendências", "Rotinas", "Projetos", "Histórico"]
 
-    page = st.sidebar.radio("Navegação", menu)
+    if is_admin(user):
+        operational_menu += ["Administração", "Base e Backup", "Exportar"]
+
+    page = st.sidebar.radio("Navegação", operational_menu)
+
     return user, page, deps
-
 
 def status_class(status):
     return {
@@ -307,44 +386,50 @@ def get_day_data(d):
 
 
 def home(user):
-    d = frame("Home", "Painel executivo do dia")
+    d = frame("Visão Geral", "Acompanhamento das atividades da equipe")
+
+    # A criação usa INSERT OR IGNORE, portanto pode ser chamada sem duplicar tarefas.
+    if is_business_day(d):
+        generate_day(d)
 
     st.markdown(f"""
     <div class='hero'>
-        <h1>Bom dia, {user} 👋</h1>
-        <p>Hoje é {br(d)}. Acompanhe operação, equipe, pendências e projetos em um só lugar.</p>
+        <h1>Olá, {user} 👋</h1>
+        <p>Atividades e prioridades de {br(d)}.</p>
     </div>
     """, unsafe_allow_html=True)
 
-    if setting("migration_done", "0") != "1":
-        st.warning("Backup ainda não migrado. Acesse a aba Migração para importar as rotinas cadastradas.")
-
-    if st.button("🔄 Gerar checklist do dia", type="primary"):
-        generate_day(d)
-        st.success("Checklist atualizado.")
-        st.rerun()
-
     day, open_day, done_day, progress, previous = get_day_data(d)
 
-    c1,c2,c3,c4,c5 = st.columns(5)
-    with c1: metric("Tarefas do dia", len(day), br(d), "#2563eb")
-    with c2: metric("Pendentes", len(open_day), "Abertas", "#f59e0b")
-    with c3: metric("Em andamento", len(progress), "Iniciadas", "#f97316")
-    with c4: metric("Pend. anteriores", len(previous), "Atenção", "#dc2626")
-    with c5: metric("Concluídas", len(done_day), "Hoje", "#16a34a")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        metric("Programadas", len(day), br(d), "#2563eb")
+    with c2:
+        metric("Pendentes", len(open_day), "Aguardando conclusão", "#f59e0b")
+    with c3:
+        metric("Em andamento", len(progress), "Atividades iniciadas", "#f97316")
+    with c4:
+        metric("Pendências anteriores", len(previous), "Requer atenção", "#dc2626")
+    with c5:
+        metric("Concluídas", len(done_day), "Na data selecionada", "#16a34a")
 
-    st.markdown("<div class='panel'><div class='panel-title'>⭐ Meu Dia</div>", unsafe_allow_html=True)
-    mine = open_day[open_day["owner"].astype(str).str.lower().str.contains(user.lower(), na=False)] if not open_day.empty else open_day
+    st.markdown(
+        "<div class='panel'><div class='panel-title'>⭐ Minhas prioridades</div>",
+        unsafe_allow_html=True
+    )
+
+    mine = filter_user_tasks(open_day, user)
+
     if mine.empty:
-        st.success("Nada pendente para você nesta data.")
+        st.success("Você não possui atividades pendentes nesta data.")
     else:
         for _, row in mine.iterrows():
             execution_card(row, user, "home_mine")
+
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 def migracao(user):
-    header("Migração", "Assistente para importar o backup da Agenda antiga")
+    header("Base e Backup", "Importação inicial e manutenção da base")
 
     preview = preview_backup("Agenda.xlsx")
 
@@ -352,7 +437,7 @@ def migracao(user):
         st.error("Não encontrei o arquivo Agenda.xlsx na pasta do app.")
         return
 
-    st.markdown("<div class='panel'><div class='panel-title'>📦 Backup encontrado</div>", unsafe_allow_html=True)
+    st.markdown("<div class='panel'><div class='panel-title'>📦 Arquivo de origem</div>", unsafe_allow_html=True)
     c1,c2,c3,c4 = st.columns(4)
     with c1: metric("Usuários", preview.get("users", 0), "Backup", "#2563eb")
     with c2: metric("Rotinas", preview.get("tasks", 0), "Virarão rotinas mestre", "#7c3aed")
@@ -361,7 +446,7 @@ def migracao(user):
     st.caption("Abas encontradas: " + ", ".join(preview.get("sheets", [])))
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='panel'><div class='panel-title'>🔎 Base atual do FIRST OPS</div>", unsafe_allow_html=True)
+    st.markdown("<div class='panel'><div class='panel-title'>🔎 Dados disponíveis no sistema</div>", unsafe_allow_html=True)
     cA, cB, cC = st.columns(3)
     with cA:
         metric("Usuários no banco", len(list_users(False)), "FIRST OPS", "#2563eb")
@@ -373,13 +458,13 @@ def migracao(user):
 
     done = setting("migration_done", "0") == "1"
     if done:
-        st.success("Migração já realizada neste banco.")
+        st.success("A importação inicial já foi realizada.")
     else:
-        st.warning("A migração será feita uma única vez e importará apenas a base útil: usuários, rotinas, projetos e histórico.")
+        st.warning("A importação traz usuários, rotinas, projetos e registros históricos.")
 
-    st.markdown("<div class='panel'><div class='panel-title'>🛠️ Correção da migração</div>", unsafe_allow_html=True)
-    st.info("Se os usuários ou rotinas não aparecerem, clique abaixo. Ele reprocessa o backup sem apagar dados e evita duplicidades.")
-    if st.button("REPROCESSAR BACKUP SEM APAGAR DADOS"):
+    st.markdown("<div class='panel'><div class='panel-title'>🛠️ Reprocessar arquivo de origem</div>", unsafe_allow_html=True)
+    st.info("Use esta opção somente para complementar cadastros que não tenham sido importados.")
+    if st.button("REPROCESSAR CADASTROS"):
         ok, msg = repair_from_backup("Agenda.xlsx")
         if ok:
             st.success(msg)
@@ -390,7 +475,7 @@ def migracao(user):
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("IMPORTAR BACKUP PARA O FIRST OPS", type="primary", disabled=done):
+        if st.button("IMPORTAR ARQUIVO", type="primary", disabled=done):
             ok, msg = migrate_backup("Agenda.xlsx", force=False)
             if ok:
                 st.success(msg)
@@ -399,7 +484,7 @@ def migracao(user):
                 st.warning(msg)
 
     with col2:
-        with st.expander("Migração forçada"):
+        with st.expander("Importação administrativa"):
             st.warning("Use apenas se estiver testando e souber que o banco pode receber nova carga.")
             senha = st.text_input("Senha", type="password")
             if st.button("Forçar migração"):
@@ -412,27 +497,55 @@ def migracao(user):
 
 
 def meu_dia(user):
-    d = frame("Meu Dia", "Suas execuções do dia")
+    d = frame("Meu Dia", f"Atividades atribuídas a {user}")
+
+    if is_business_day(d):
+        generate_day(d)
+
     day, open_day, done_day, progress, previous = get_day_data(d)
-    mine = day[day["owner"].astype(str).str.lower().str.contains(user.lower(), na=False)] if not day.empty else day
+    mine = filter_user_tasks(day, user)
+
+    c1, c2, c3 = st.columns(3)
 
     if mine.empty:
-        st.info("Nenhuma tarefa gerada para você nesta data.")
-        if st.button("Gerar checklist do dia"):
-            generate_day(d)
-            st.rerun()
+        mine_open = mine
+        mine_progress = mine
+        mine_done = mine
+    else:
+        mine_open = mine[
+            ~mine["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
+        ]
+        mine_progress = mine[mine["status"] == "Em andamento"]
+        mine_done = mine[mine["status"] == "Concluída"]
+
+    with c1:
+        metric("Pendentes", len(mine_open), br(d), "#f59e0b")
+    with c2:
+        metric("Em andamento", len(mine_progress), "Atividades iniciadas", "#f97316")
+    with c3:
+        metric("Concluídas", len(mine_done), "Na data selecionada", "#16a34a")
+
+    show_done = st.toggle("Exibir atividades concluídas", value=False)
+
+    display = mine.copy()
+    if not show_done and not display.empty:
+        display = display[
+            ~display["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
+        ]
+
+    if display.empty:
+        st.success("Nenhuma atividade pendente para você nesta data.")
         return
 
-    show_done = st.toggle("Mostrar concluídas", value=False)
-    if not show_done:
-        mine = mine[~mine["status"].isin(["Concluída","Cancelada","Reprogramada"])]
-
-    for _, row in mine.iterrows():
+    for _, row in display.iterrows():
         execution_card(row, user, "meu_dia")
 
-
 def equipe(user):
-    d = frame("Equipe", "Carga de trabalho e produtividade")
+    d = frame("Equipe", "Distribuição e andamento das atividades")
+
+    if is_business_day(d):
+        generate_day(d)
+
     day, open_day, done_day, progress, previous = get_day_data(d)
 
     if day.empty:
@@ -451,7 +564,11 @@ def equipe(user):
 
 
 def coordenacao(user):
-    d = frame("Coordenação", "Gestão da operação")
+    d = frame("Coordenação", "Acompanhamento das entregas da equipe")
+
+    if is_business_day(d):
+        generate_day(d)
+
     day, open_day, done_day, progress, previous = get_day_data(d)
 
     c1,c2,c3,c4 = st.columns(4)
@@ -470,7 +587,11 @@ def coordenacao(user):
 
 
 def department_page(user, department):
-    d = frame(department, f"Operação de {department}")
+    d = frame(department, f"Atividades de {department}")
+
+    if is_business_day(d):
+        generate_day(d)
+
     day = list_executions(br(d))
     base = day[day["department"].astype(str).str.lower() == department.lower()] if not day.empty else day
     if base.empty:
@@ -484,7 +605,7 @@ def department_page(user, department):
 
 
 def pendencias(user):
-    d = frame("Pendências", "Execuções passadas não concluídas")
+    d = frame("Pendências", "Atividades de datas anteriores ainda abertas")
     previous = list_previous_pending(br(d))
     if previous.empty:
         st.success("Sem pendências anteriores.")
@@ -494,7 +615,7 @@ def pendencias(user):
 
 
 def rotinas(user):
-    d = frame("Rotinas", "Cadastro mestre das rotinas")
+    d = frame("Rotinas", "Atividades recorrentes da operação")
     with st.expander("➕ Nova rotina", expanded=False):
         users = list_users()
         owners = [""] + (users["name"].tolist() if not users.empty else [])
@@ -529,7 +650,7 @@ def rotinas(user):
 
 
 def projetos(user):
-    d = frame("Projetos", "Kanban e acompanhamento")
+    d = frame("Projetos", "Acompanhamento dos projetos da área")
     with st.expander("➕ Novo projeto", expanded=False):
         users = list_users()
         owners = [""] + (users["name"].tolist() if not users.empty else [])
@@ -573,7 +694,7 @@ def projetos(user):
 
 
 def historico():
-    d = frame("Histórico", "Auditoria")
+    d = frame("Histórico", "Registro das movimentações realizadas")
     events = list_events()
     if events.empty:
         st.info("Sem histórico.")
@@ -585,7 +706,7 @@ def historico():
 
 
 def administracao(user):
-    d = frame("Administração", "Usuários, base e configurações")
+    d = frame("Administração", "Usuários e configurações de acesso")
     c1,c2,c3 = st.columns(3)
     with c1: st.metric("Usuários", len(list_users(False)))
     with c2: st.metric("Rotinas", len(list_routines(False)))
@@ -611,7 +732,7 @@ def administracao(user):
 
 
 def exportar(user):
-    d = frame("Exportar", "Baixar base completa")
+    d = frame("Exportar", "Gerar arquivo para conferência e segurança")
     path = Path("FIRST_OPS_Export.xlsx")
     if st.button("Gerar Excel"):
         export_excel(path)
@@ -622,18 +743,33 @@ def exportar(user):
 
 def main():
     user, page, deps = sidebar()
-    if page == "Home": home(user)
-    elif page == "Migração": migracao(user)
-    elif page == "Meu Dia": meu_dia(user)
-    elif page == "Equipe": equipe(user)
-    elif page == "Coordenação": coordenacao(user)
-    elif page in deps: department_page(user, page)
-    elif page == "Pendências": pendencias(user)
-    elif page == "Rotinas": rotinas(user)
-    elif page == "Projetos": projetos(user)
-    elif page == "Histórico": historico()
-    elif page == "Administração": administracao(user)
-    elif page == "Exportar": exportar(user)
+
+    if page == "Início":
+        home(user)
+    elif page == "Meu Dia":
+        meu_dia(user)
+    elif page == "Equipe":
+        equipe(user)
+    elif page == "Coordenação":
+        coordenacao(user)
+    elif page in deps:
+        department_page(user, page)
+    elif page == "Pendências":
+        pendencias(user)
+    elif page == "Rotinas":
+        rotinas(user)
+    elif page == "Projetos":
+        projetos(user)
+    elif page == "Histórico":
+        historico()
+    elif page == "Administração" and is_admin(user):
+        administracao(user)
+    elif page == "Base e Backup" and is_admin(user):
+        migracao(user)
+    elif page == "Exportar" and is_admin(user):
+        exportar(user)
+    else:
+        st.error("Acesso não autorizado para este perfil.")
 
 
 if __name__ == "__main__":
