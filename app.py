@@ -11,6 +11,7 @@ import streamlit as st
 
 from first_ops_database import (
     BACKUP_DIR,
+    GO_LIVE_DATE,
     DB_PATH,
     backfill_until,
     cancel_activity,
@@ -45,7 +46,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.0",
+    page_title="FIRST OPS Enterprise 2.1",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -368,12 +369,18 @@ def home(user: str) -> None:
         unsafe_allow_html=True,
     )
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    due_today = activities[
+        (activities["due_time"].fillna("").astype(str).str.strip() != "")
+        & (~activities["status"].isin(["Concluída", "Cancelada", "Reprogramada"]))
+    ] if not activities.empty else activities
+
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1: metric("Programadas", len(activities), br(day), "#2563eb")
     with c2: metric("Pendentes", len(pending), "Aguardando conclusão", "#f59e0b")
     with c3: metric("Em andamento", len(progress), "Atividades iniciadas", "#f97316")
-    with c4: metric("Pendências anteriores", len(previous), "Requer atenção", "#dc2626")
-    with c5: metric("Concluídas", len(completed), "Na data selecionada", "#16a34a")
+    with c4: metric("Pendências anteriores", len(previous), "Somente após o Go Live", "#dc2626")
+    with c5: metric("Prazo hoje", len(due_today), "Com horário definido", "#7c3aed")
+    with c6: metric("Concluídas", len(completed), "Na data selecionada", "#16a34a")
 
     st.markdown("<div class='panel'><div class='panel-title'>⭐ Minhas prioridades</div>", unsafe_allow_html=True)
     mine = list_user_activities(day, user)
@@ -570,6 +577,12 @@ def administration_page(user: str) -> None:
     with c2: metric("Rotinas", len(list_routines(False)), "Cadastradas", "#7c3aed")
     with c3: metric("Projetos", len(list_projects(False)), "Cadastrados", "#f59e0b")
 
+    st.info(
+        f"📅 Início oficial da operação: **{br(GO_LIVE_DATE)}**. "
+        "Indicadores e pendências anteriores consideram somente dias úteis "
+        "a partir desta data."
+    )
+
     with st.expander("➕ Cadastrar usuário"):
         with st.form("new_user"):
             name = st.text_input("Nome")
@@ -623,6 +636,11 @@ def backup_page(user: str) -> None:
     st.info(
         "O sistema cria automaticamente uma cópia local do banco por dia. "
         "Use os botões acima para baixar uma cópia externa."
+    )
+
+    st.success(
+        f"O dia {br(GO_LIVE_DATE)} é o marco zero da operação. "
+        "Nenhuma pendência anterior a essa data será contabilizada."
     )
 
 

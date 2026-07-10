@@ -1,0 +1,9 @@
+{
+  "go_live": "2026-07-10",
+  "business_days_only": true,
+  "previous_pending_before_go_live": 0,
+  "activities_before_go_live": 0,
+  "users": 5,
+  "routines": 44,
+  "projects": 3
+}

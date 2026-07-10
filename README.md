@@ -30,3 +30,13 @@ streamlit run app.py
 ```
 
 O banco desta versão é `data/first_ops_enterprise2.db`, portanto não usa bancos antigos.
+
+
+## FIRST OPS Enterprise 2.1 — Go Live
+
+- Início oficial da operação: **10/07/2026**.
+- Pendências anteriores zeradas até essa data.
+- Novas pendências começam a ser contabilizadas no próximo dia útil.
+- Sábados e domingos não geram atividades.
+- O backfill nunca cria atividades anteriores ao Go Live.
+- Incluído indicador de atividades com prazo/horário no dia.

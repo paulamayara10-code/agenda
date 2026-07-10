@@ -16,6 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 BACKUP_DIR = BASE_DIR / "backups"
 DB_PATH = DATA_DIR / "first_ops_enterprise2.db"
+GO_LIVE_DATE = date(2026, 7, 10)
 
 DATA_DIR.mkdir(exist_ok=True)
 BACKUP_DIR.mkdir(exist_ok=True)
@@ -488,15 +489,21 @@ def ensure_activities(day: date) -> int:
 
 
 def backfill_until(day: date) -> None:
+    """
+    Materializa somente atividades a partir do Go Live.
+    O período anterior é ignorado definitivamente.
+    """
+    if day < GO_LIVE_DATE:
+        return
+
     last_text = get_setting("last_materialized_date", "")
     last = parse_date(last_text)
 
-    if last is None:
-        ensure_activities(day)
-        set_setting("last_materialized_date", day.isoformat())
-        return
+    if last is None or last < GO_LIVE_DATE:
+        last = GO_LIVE_DATE - timedelta(days=1)
 
     cursor = last + timedelta(days=1)
+
     while cursor <= day:
         ensure_activities(cursor)
         cursor += timedelta(days=1)
@@ -530,17 +537,32 @@ def list_department_activities(day: date, department: str) -> pd.DataFrame:
 
 
 def list_previous_pending(reference_day: date, user: str | None = None) -> pd.DataFrame:
+    """
+    Considera pendência somente entre o Go Live e a data de referência.
+    Atividades anteriores a 10/07/2026 são tratadas como implantação e não
+    entram nos indicadores.
+    """
+    if reference_day <= GO_LIVE_DATE:
+        return pd.DataFrame(columns=query(
+            "SELECT * FROM daily_activities LIMIT 0"
+        ).columns)
+
     frame = query(
         """
         SELECT * FROM daily_activities
-        WHERE activity_date < ?
+        WHERE activity_date >= ?
+          AND activity_date < ?
           AND status NOT IN ('Concluída', 'Cancelada', 'Reprogramada')
         ORDER BY activity_date, department, owners, title
         """,
-        (reference_day.isoformat(),),
+        (GO_LIVE_DATE.isoformat(), reference_day.isoformat()),
     )
+
     if user and not frame.empty:
-        frame = frame[frame["owners"].apply(lambda value: owner_matches(value, user))].copy()
+        frame = frame[
+            frame["owners"].apply(lambda value: owner_matches(value, user))
+        ].copy()
+
     return frame
 
 
@@ -667,6 +689,27 @@ def cancel_activity(activity_id: int, user: str, note: str) -> None:
         (note, user, now_br(), now_br(), activity_id),
     )
     log_event(activity_id, int(row["routine_id"]), user, "Cancelada", note)
+
+
+def business_days_late(activity_date: str, reference_day: date) -> int:
+    """
+    Quantidade de dias úteis entre a data da atividade e a referência.
+    Sexta para segunda representa 1 dia útil de atraso.
+    """
+    start = parse_date(activity_date)
+
+    if start is None or reference_day <= start:
+        return 0
+
+    count = 0
+    cursor = start + timedelta(days=1)
+
+    while cursor <= reference_day:
+        if is_business_day(cursor):
+            count += 1
+        cursor += timedelta(days=1)
+
+    return count
 
 
 def list_events(day: date | None = None) -> pd.DataFrame:
