@@ -826,6 +826,100 @@ def cancel_activity(activity_id: int, user: str, note: str) -> None:
     log_event(activity_id, int(row["routine_id"]), user, "Cancelada", note)
 
 
+
+def reset_pending_activities(
+    cutoff_day: date,
+    user_name: str,
+    owner: str | None = None,
+    department: str | None = None,
+    include_cutoff_day: bool = False,
+) -> int:
+    """
+    Retira atividades abertas dos indicadores sem excluir rotinas ou histórico.
+
+    As execuções selecionadas passam para o status Cancelada e recebem a
+    observação 'Reinício operacional'. Somente atividades abertas são afetadas.
+    """
+    operator = "<=" if include_cutoff_day else "<"
+    sql = f"""
+        SELECT * FROM daily_activities
+        WHERE activity_date {operator} ?
+          AND status NOT IN ('Concluída', 'Cancelada', 'Reprogramada')
+    """
+    params: list[Any] = [cutoff_day.isoformat()]
+
+    if department:
+        sql += " AND LOWER(TRIM(department)) = LOWER(TRIM(?))"
+        params.append(normalize_text(department))
+
+    sql += " ORDER BY activity_date, department, owners, title"
+    activities = query(sql, tuple(params))
+
+    if owner and not activities.empty:
+        activities = activities[
+            activities["owners"].apply(
+                lambda value: owner_matches(value, owner)
+            )
+        ].copy()
+
+    if activities.empty:
+        return 0
+
+    note = (
+        f"Pendência encerrada por reinício operacional em "
+        f"{date.today().strftime('%d/%m/%Y')}."
+    )
+    timestamp = now_br()
+
+    with connect() as conn:
+        for _, row in activities.iterrows():
+            activity_id = int(row["id"])
+            routine_id = int(row["routine_id"])
+
+            conn.execute(
+                """
+                UPDATE daily_activities
+                SET status='Cancelada',
+                    note=?,
+                    canceled_by=?,
+                    canceled_at=?,
+                    updated_at=?
+                WHERE id=?
+                """,
+                (
+                    note,
+                    user_name,
+                    timestamp,
+                    timestamp,
+                    activity_id,
+                ),
+            )
+
+            conn.execute(
+                """
+                INSERT INTO activity_events(
+                    activity_id, routine_id, event_date, event_time,
+                    user_name, action, note, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    activity_id,
+                    routine_id,
+                    date.today().isoformat(),
+                    datetime.now().strftime("%H:%M:%S"),
+                    user_name,
+                    "Pendência zerada",
+                    note,
+                    timestamp,
+                ),
+            )
+
+        conn.commit()
+
+    return len(activities)
+
+
 def business_days_late(activity_date: str, reference_day: date) -> int:
     """
     Quantidade de dias úteis entre a data da atividade e a referência.

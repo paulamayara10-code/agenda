@@ -134,3 +134,21 @@ Permissões:
   concentrados em uma única aba chamada `Backup`.
 - A Central de Rotinas não exibe mais controles de backup ou exportação.
 - Textos genéricos foram substituídos por orientações diretas.
+
+
+## FIRST OPS Enterprise 2.3.5 — Zerar Pendências
+
+A aba Backup possui a função `Zerar pendências`, com opções para:
+- todas as pendências;
+- um usuário;
+- um departamento;
+- atividades anteriores à data escolhida.
+
+A função:
+- não exclui rotinas;
+- não apaga atividades concluídas;
+- não apaga usuários ou projetos;
+- cria backup completo antes da ação;
+- encerra as execuções abertas como `Cancelada`;
+- registra a ação `Pendência zerada` no histórico;
+- permite que as rotinas voltem a gerar atividades normalmente nas próximas datas.

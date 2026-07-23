@@ -1,0 +1,16 @@
+{
+  "version": "2.3.5",
+  "reset_pending_available": true,
+  "backup_before_reset": true,
+  "routines_preserved": true,
+  "history_preserved": true,
+  "completed_preserved": true,
+  "filters": [
+    "Todas as pendências",
+    "Pendências de um usuário",
+    "Pendências de um departamento"
+  ],
+  "users": 5,
+  "routines": 44,
+  "projects": 3
+}
