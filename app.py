@@ -41,6 +41,7 @@ from first_ops_database_v232 import (
     normalize_text,
     owner_matches,
     reschedule_activity,
+    reset_pending_activities,
     save_note,
     set_activity_status,
     update_routine,
@@ -54,7 +55,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.3.4",
+    page_title="FIRST OPS Enterprise 2.3.5",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -1282,6 +1283,92 @@ def backup_page(user: str) -> None:
                     )
 
                 st.rerun()
+
+
+    st.markdown("### Zerar pendências")
+
+    st.caption(
+        "As rotinas permanecem cadastradas. Somente as execuções abertas "
+        "selecionadas deixam de aparecer como pendência."
+    )
+
+    reset_scope = st.radio(
+        "Aplicar em",
+        [
+            "Todas as pendências",
+            "Pendências de um usuário",
+            "Pendências de um departamento",
+        ],
+        horizontal=True,
+        key="reset_pending_scope",
+    )
+
+    reset_cutoff = st.date_input(
+        "Zerar pendências anteriores a",
+        value=day,
+        format="DD/MM/YYYY",
+        key="reset_pending_cutoff",
+        help=(
+            "A data escolhida não será zerada. Por exemplo: selecionando hoje, "
+            "serão encerradas somente as pendências dos dias anteriores."
+        ),
+    )
+
+    reset_owner = None
+    reset_department = None
+
+    if reset_scope == "Pendências de um usuário":
+        available_users = list_users(True)["name"].dropna().astype(str).tolist()
+        reset_owner = st.selectbox(
+            "Usuário",
+            available_users,
+            key="reset_pending_owner",
+        )
+
+    elif reset_scope == "Pendências de um departamento":
+        available_departments = list_departments()
+        reset_department = st.selectbox(
+            "Departamento",
+            available_departments,
+            key="reset_pending_department",
+        )
+
+    confirmation = st.checkbox(
+        "Confirmo que desejo retirar essas atividades da lista de pendências",
+        key="confirm_reset_pending",
+    )
+
+    if st.button(
+        "Zerar pendências selecionadas",
+        type="primary",
+        disabled=not confirmation,
+        use_container_width=True,
+        key="reset_pending_button",
+    ):
+        create_full_backup_package()
+        cleanup_old_backups(30)
+
+        affected = reset_pending_activities(
+            cutoff_day=reset_cutoff,
+            user_name=user,
+            owner=reset_owner,
+            department=reset_department,
+            include_cutoff_day=False,
+        )
+
+        if affected:
+            st.success(
+                f"{affected} pendência(s) zerada(s). "
+                "As rotinas permanecem ativas e voltarão a gerar atividades "
+                "nas próximas datas previstas."
+            )
+        else:
+            st.info(
+                "Não havia pendências abertas dentro dos critérios selecionados."
+            )
+
+        st.session_state["confirm_reset_pending"] = False
+        st.rerun()
 
     st.markdown("### Cópias disponíveis")
 
