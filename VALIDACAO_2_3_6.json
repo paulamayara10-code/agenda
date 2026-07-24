@@ -1,0 +1,6 @@
+{
+  "version": "2.3.6",
+  "session_state_fix": true,
+  "zerar_pendencias": true,
+  "backup_automatico": true
+}

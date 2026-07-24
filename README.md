@@ -152,3 +152,11 @@ A função:
 - encerra as execuções abertas como `Cancelada`;
 - registra a ação `Pendência zerada` no histórico;
 - permite que as rotinas voltem a gerar atividades normalmente nas próximas datas.
+
+
+## FIRST OPS Enterprise 2.3.7 — Edição de Rotinas
+
+- O botão `Editar` abre o formulário diretamente dentro do card da rotina.
+- O botão muda para `Fechar edição` enquanto o formulário estiver aberto.
+- O cadastro de nova rotina continua separado.
+- A rotina permanece ativa e o histórico de alteração é preservado.

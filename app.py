@@ -55,7 +55,7 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.3.5",
+    page_title="FIRST OPS Enterprise 2.3.7",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -851,6 +851,7 @@ def routines_page(user: str) -> None:
     ):
         st.session_state["show_new_routine"] = True
         st.session_state.pop("edit_routine_id", None)
+        st.rerun()
 
     st.caption(
         "Cadastre, edite, duplique, desative ou reative atividades recorrentes."
@@ -869,29 +870,6 @@ def routines_page(user: str) -> None:
             if st.button("Fechar cadastro", key="close_new_routine"):
                 st.session_state.pop("show_new_routine", None)
                 st.rerun()
-
-    edit_id = st.session_state.get("edit_routine_id")
-    if edit_id:
-        routine = get_routine(int(edit_id))
-        if routine:
-            with st.expander(
-                f"✏️ Editar: {routine['title']}",
-                expanded=True,
-            ):
-                render_routine_form(
-                    user,
-                    users,
-                    departments,
-                    projects,
-                    routine=routine,
-                    form_key=f"edit_routine_form_{edit_id}",
-                )
-                if st.button(
-                    "Cancelar edição",
-                    key=f"cancel_edit_{edit_id}",
-                ):
-                    st.session_state.pop("edit_routine_id", None)
-                    st.rerun()
 
     routines = list_routines(False)
 
@@ -980,13 +958,12 @@ def routines_page(user: str) -> None:
             filtered["project"].astype(str) == project_filter
         ]
 
-    st.caption(
-        f"{len(filtered)} rotina(s) encontrada(s)."
-    )
+    st.caption(f"{len(filtered)} rotina(s) encontrada(s).")
 
     for _, row in filtered.iterrows():
         routine_id = int(row["id"])
         active = bool(row.get("active", 1))
+        edit_open = st.session_state.get("edit_routine_id") == routine_id
 
         with st.container(border=True):
             left, actions = st.columns([4.8, 1.7])
@@ -1025,12 +1002,15 @@ def routines_page(user: str) -> None:
 
             with actions:
                 if st.button(
-                    "✏️ Editar",
+                    "✖️ Fechar edição" if edit_open else "✏️ Editar",
                     key=f"edit_routine_{routine_id}",
                     use_container_width=True,
                 ):
-                    st.session_state["edit_routine_id"] = routine_id
-                    st.session_state.pop("show_new_routine", None)
+                    if edit_open:
+                        st.session_state.pop("edit_routine_id", None)
+                    else:
+                        st.session_state["edit_routine_id"] = routine_id
+                        st.session_state.pop("show_new_routine", None)
                     st.rerun()
 
                 if st.button(
@@ -1040,7 +1020,7 @@ def routines_page(user: str) -> None:
                 ):
                     new_id = duplicate_routine(routine_id, user)
                     st.session_state["edit_routine_id"] = new_id
-                    st.success("Cópia criada. Ajuste os campos e salve.")
+                    st.session_state.pop("show_new_routine", None)
                     st.rerun()
 
                 toggle_label = (
@@ -1084,6 +1064,30 @@ def routines_page(user: str) -> None:
                                     "Esta rotina já possui registros diários "
                                     "e não pode ser excluída. Mantenha-a desativada."
                                 )
+
+            if edit_open:
+                current_routine = get_routine(routine_id)
+                if current_routine:
+                    st.divider()
+                    st.markdown(
+                        f"#### ✏️ Editando: {normalize_text(current_routine.get('title'))}"
+                    )
+                    render_routine_form(
+                        user,
+                        users,
+                        departments,
+                        projects,
+                        routine=current_routine,
+                        form_key=f"edit_routine_form_{routine_id}",
+                    )
+
+                    if st.button(
+                        "Cancelar edição",
+                        key=f"cancel_inline_edit_{routine_id}",
+                    ):
+                        st.session_state.pop("edit_routine_id", None)
+                        st.rerun()
+
 
 def projects_page(user: str) -> None:
     day = frame("Projetos", "Prazos e andamento dos projetos")
@@ -1367,7 +1371,6 @@ def backup_page(user: str) -> None:
                 "Não havia pendências abertas dentro dos critérios selecionados."
             )
 
-        st.session_state["confirm_reset_pending"] = False
         st.rerun()
 
     st.markdown("### Cópias disponíveis")
