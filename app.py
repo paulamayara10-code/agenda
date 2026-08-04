@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from io import BytesIO
+import re
 import unicodedata
 
 import pandas as pd
@@ -47,7 +48,6 @@ from first_ops_database_v232 import (
     update_routine,
     get_routine,
     set_routine_active,
-    duplicate_routine,
     delete_routine_permanently,
     user_profile,
 )
@@ -55,16 +55,32 @@ from migrate import import_backup
 
 
 st.set_page_config(
-    page_title="FIRST OPS Enterprise 2.3.7",
+    page_title="FIRST OPS Enterprise 2.3.8",
     page_icon="✅",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Banco novo e isolado.
-import_backup("Agenda.xlsx", force=False)
-backfill_until(date.today())
-daily_backup()
+# Inicialização executada uma vez por processo e por data.
+# Evita repetir importação, preenchimento e backup a cada clique no Streamlit.
+APP_DIR = Path(__file__).resolve().parent
+
+
+@st.cache_resource(show_spinner=False)
+def initialize_app(run_day: date) -> bool:
+    agenda_path = APP_DIR / "Agenda.xlsx"
+    if agenda_path.exists():
+        import_backup(str(agenda_path), force=False)
+    backfill_until(run_day)
+    daily_backup()
+    return True
+
+
+try:
+    initialize_app(date.today())
+except Exception as exc:
+    st.error(f"Não foi possível inicializar a base do sistema: {exc}")
+    st.stop()
 
 
 st.markdown(
@@ -171,19 +187,21 @@ def metric(label: str, value: int | str, detail: str, color: str) -> None:
 
 
 def date_bar() -> date:
+    # Garante que o widget e os botões compartilhem exatamente a mesma chave.
+    ref_date()
+
     st.markdown("<div class='panel' style='padding:14px 17px'>", unsafe_allow_html=True)
     c1, c2, c3, c4, c5 = st.columns([1.15, 1.1, .85, .65, 2.5])
 
     with c1:
         st.markdown("#### 📅 Data de referência")
     with c2:
-        selected = st.date_input(
+        st.date_input(
             "Data",
-            value=ref_date(),
+            key="reference_date",
+            format="DD/MM/YYYY",
             label_visibility="collapsed",
-            key="global_reference_date",
         )
-        st.session_state["reference_date"] = selected
     with c3:
         st.button("◀ Anterior", use_container_width=True, on_click=move_date, args=(-1,))
     with c4:
@@ -205,6 +223,15 @@ def date_bar() -> date:
 def frame(title: str, subtitle: str) -> date:
     header(title, subtitle)
     return date_bar()
+
+
+def operational_frame(title: str, subtitle: str) -> date:
+    day = frame(title, subtitle)
+    try:
+        ensure_activities(day)
+    except Exception as exc:
+        st.error(f"Não foi possível preparar as atividades de {br(day)}: {exc}")
+    return day
 
 
 def sidebar():
@@ -245,42 +272,49 @@ def sidebar():
     return user, page, departments
 
 
+def status_key(value) -> str:
+    return plain(normalize_text(value))
+
+
 def status_class(status: str) -> str:
     return {
-        "Pendente": "yellow",
-        "Em andamento": "orange",
-        "Concluída": "green",
-        "Cancelada": "gray",
-        "Reprogramada": "blue",
-    }.get(status, "purple")
+        "pendente": "yellow",
+        "em andamento": "orange",
+        "concluida": "green",
+        "cancelada": "gray",
+        "reprogramada": "blue",
+    }.get(status_key(status), "purple")
+
+
+def status_mask(frame_data: pd.DataFrame, *statuses: str) -> pd.Series:
+    if frame_data.empty or "status" not in frame_data.columns:
+        return pd.Series(False, index=frame_data.index, dtype=bool)
+    accepted = {status_key(status) for status in statuses}
+    return frame_data["status"].apply(status_key).isin(accepted)
 
 
 def activity_card(row: pd.Series, user: str, prefix: str) -> None:
     activity_id = int(row["id"])
     status = normalize_text(row.get("status")) or "Pendente"
+    status_code = status_key(status)
     title = normalize_text(row.get("title"))
     description = normalize_text(row.get("description"))
 
+    is_completed = status_code == "concluida"
+    is_in_progress = status_code == "em andamento"
+    is_pending = status_code == "pendente"
+    is_closed = status_code in {"cancelada", "reprogramada"}
+
     with st.container(border=True):
-        left, right = st.columns([5.2, 1.15])
+        left, right = st.columns([5.2, 1.35])
 
         with left:
-            checked = status == "Concluída"
-            new_checked = st.checkbox(
-                title,
-                value=checked,
-                key=f"check_{prefix}_{activity_id}",
-                disabled=checked,
+            title_class = "task-done" if is_completed else "task-title"
+            icon = "✅" if is_completed else "📋"
+            st.markdown(
+                f"<div class='{title_class}'>{icon} {title}</div>",
+                unsafe_allow_html=True,
             )
-
-            if new_checked and not checked:
-                set_activity_status(
-                    activity_id,
-                    "Concluída",
-                    user,
-                    "Concluída pelo checklist rápido",
-                )
-                st.rerun()
 
             if description:
                 st.caption(description)
@@ -304,19 +338,63 @@ def activity_card(row: pd.Series, user: str, prefix: str) -> None:
                 st.info(normalize_text(row.get("note")))
 
         with right:
-            if status == "Concluída":
+            if is_completed:
                 st.success("Concluída")
-            elif status == "Em andamento":
-                st.warning("Em andamento")
+
+            elif is_closed:
+                st.info(status)
+
             else:
-                if st.button("▶ Iniciar", key=f"start_{prefix}_{activity_id}", use_container_width=True):
-                    set_activity_status(
-                        activity_id,
-                        "Em andamento",
-                        user,
-                        "Atividade iniciada",
-                    )
-                    st.rerun()
+                if is_pending:
+                    if st.button(
+                        "▶ Iniciar",
+                        key=f"start_{prefix}_{activity_id}",
+                        use_container_width=True,
+                    ):
+                        try:
+                            set_activity_status(
+                                activity_id,
+                                "Em andamento",
+                                user,
+                                "Atividade iniciada",
+                            )
+                        except Exception as exc:
+                            st.session_state["activity_flash"] = (
+                                "error",
+                                f"Não foi possível iniciar a atividade: {exc}",
+                            )
+                        else:
+                            st.session_state["activity_flash"] = (
+                                "success",
+                                f"Atividade iniciada: {title}",
+                            )
+                        st.rerun()
+
+                if is_pending or is_in_progress:
+                    if st.button(
+                        "✅ Concluir",
+                        key=f"complete_{prefix}_{activity_id}",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        try:
+                            set_activity_status(
+                                activity_id,
+                                "Concluída",
+                                user,
+                                "Atividade concluída pelo usuário",
+                            )
+                        except Exception as exc:
+                            st.session_state["activity_flash"] = (
+                                "error",
+                                f"Não foi possível concluir a atividade: {exc}",
+                            )
+                        else:
+                            st.session_state["activity_flash"] = (
+                                "success",
+                                f"Atividade concluída: {title}",
+                            )
+                        st.rerun()
 
         with st.expander("💬 Detalhes"):
             note = st.text_area(
@@ -331,8 +409,13 @@ def activity_card(row: pd.Series, user: str, prefix: str) -> None:
                 if st.button("Salvar observação", key=f"save_note_{prefix}_{activity_id}"):
                     if note.strip():
                         save_note(activity_id, user, note)
+                        st.session_state["activity_flash"] = (
+                            "success",
+                            "Observação salva.",
+                        )
                         st.rerun()
-                    st.warning("Digite uma observação.")
+                    else:
+                        st.warning("Digite uma observação.")
 
             with b:
                 new_day = st.date_input(
@@ -341,21 +424,43 @@ def activity_card(row: pd.Series, user: str, prefix: str) -> None:
                     key=f"new_day_{prefix}_{activity_id}",
                 )
                 if st.button("Reprogramar", key=f"reschedule_{prefix}_{activity_id}"):
-                    reschedule_activity(
-                        activity_id,
-                        user,
-                        new_day,
-                        note or "Atividade reprogramada",
-                    )
+                    try:
+                        reschedule_activity(
+                            activity_id,
+                            user,
+                            new_day,
+                            note or "Atividade reprogramada",
+                        )
+                    except Exception as exc:
+                        st.session_state["activity_flash"] = (
+                            "error",
+                            f"Não foi possível reprogramar a atividade: {exc}",
+                        )
+                    else:
+                        st.session_state["activity_flash"] = (
+                            "success",
+                            f"Atividade reprogramada para {br(new_day)}.",
+                        )
                     st.rerun()
 
             with c:
                 if st.button("Cancelar", key=f"cancel_{prefix}_{activity_id}"):
-                    cancel_activity(
-                        activity_id,
-                        user,
-                        note or "Atividade cancelada",
-                    )
+                    try:
+                        cancel_activity(
+                            activity_id,
+                            user,
+                            note or "Atividade cancelada",
+                        )
+                    except Exception as exc:
+                        st.session_state["activity_flash"] = (
+                            "error",
+                            f"Não foi possível cancelar a atividade: {exc}",
+                        )
+                    else:
+                        st.session_state["activity_flash"] = (
+                            "success",
+                            f"Atividade cancelada: {title}",
+                        )
                     st.rerun()
 
 def activity_groups(frame_data: pd.DataFrame, user: str, prefix: str) -> None:
@@ -363,19 +468,32 @@ def activity_groups(frame_data: pd.DataFrame, user: str, prefix: str) -> None:
         st.success("Nenhuma atividade pendente nesta data.")
         return
 
-    order = ["Em andamento", "Pendente", "Concluída", "Reprogramada", "Cancelada"]
-    for status in order:
-        section = frame_data[frame_data["status"] == status]
+    order = [
+        ("em andamento", "Em andamento"),
+        ("pendente", "Pendente"),
+        ("concluida", "Concluída"),
+        ("reprogramada", "Reprogramada"),
+        ("cancelada", "Cancelada"),
+    ]
+    normalized = frame_data.copy()
+    normalized["_status_key"] = normalized["status"].apply(status_key)
+
+    displayed = 0
+    for key, label in order:
+        section = normalized[normalized["_status_key"] == key]
         if section.empty:
             continue
-        st.markdown(f"### {status}")
-        for _, row in section.iterrows():
-            activity_card(row, user, f"{prefix}_{plain(status)}")
+        displayed += len(section)
+        st.markdown(f"### {label}")
+        for _, row in section.drop(columns=["_status_key"]).iterrows():
+            activity_card(row, user, f"{prefix}_{plain(label)}")
+
+    if displayed == 0:
+        st.info("As atividades encontradas possuem uma situação não reconhecida.")
 
 
 def home(user: str) -> None:
-    day = frame("Meu Painel", f"Atividades de {user}")
-    ensure_activities(day)
+    day = operational_frame("Meu Painel", f"Atividades de {user}")
 
     mine = list_user_activities(day, user)
     previous = list_previous_pending(day, user)
@@ -383,11 +501,9 @@ def home(user: str) -> None:
     if mine.empty:
         pending = progress = completed = mine
     else:
-        pending = mine[
-            ~mine["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
-        ]
-        progress = mine[mine["status"] == "Em andamento"]
-        completed = mine[mine["status"] == "Concluída"]
+        pending = mine[status_mask(mine, "Pendente")]
+        progress = mine[status_mask(mine, "Em andamento")]
+        completed = mine[status_mask(mine, "Concluída")]
 
     st.markdown(
         f"""
@@ -406,7 +522,7 @@ def home(user: str) -> None:
     with c4: metric("Concluídas", len(completed), "Na data selecionada", "#16a34a")
 
     st.markdown("<div class='panel'><div class='panel-title'>⭐ Minhas prioridades</div>", unsafe_allow_html=True)
-    activity_groups(pending, user, "home")
+    activity_groups(pd.concat([progress, pending]).drop_duplicates(subset=["id"]) if not mine.empty else mine, user, "home")
     st.markdown("</div>", unsafe_allow_html=True)
 
     if not previous.empty:
@@ -414,15 +530,14 @@ def home(user: str) -> None:
         activity_groups(previous, user, "home_previous")
         st.markdown("</div>", unsafe_allow_html=True)
 
+
 def my_day(user: str) -> None:
-    day = frame("Meu Dia", f"Atividades atribuídas a {user}")
+    day = operational_frame("Meu Dia", f"Atividades atribuídas a {user}")
     activities = list_user_activities(day, user)
 
-    pending = activities[
-        ~activities["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
-    ] if not activities.empty else activities
-    progress = activities[activities["status"] == "Em andamento"] if not activities.empty else activities
-    completed = activities[activities["status"] == "Concluída"] if not activities.empty else activities
+    pending = activities[status_mask(activities, "Pendente")] if not activities.empty else activities
+    progress = activities[status_mask(activities, "Em andamento")] if not activities.empty else activities
+    completed = activities[status_mask(activities, "Concluída")] if not activities.empty else activities
 
     c1, c2, c3 = st.columns(3)
     with c1: metric("Pendentes", len(pending), br(day), "#f59e0b")
@@ -430,14 +545,18 @@ def my_day(user: str) -> None:
     with c3: metric("Concluídas", len(completed), "Na data selecionada", "#16a34a")
 
     show_completed = st.toggle("Exibir atividades finalizadas", value=False)
-    display = activities if show_completed else pending
+    if show_completed:
+        display = activities
+    else:
+        display = pd.concat([progress, pending]).drop_duplicates(subset=["id"]) if not activities.empty else activities
     activity_groups(display, user, "myday")
 
 
 def team(user: str) -> None:
-    day = frame("Equipe", "Andamento por pessoa")
+    day = operational_frame("Equipe", "Andamento por pessoa")
     activities = list_activities(day)
     users = list_users(True)
+    all_previous = list_previous_pending(day)
 
     if users.empty:
         st.info("Nenhum usuário cadastrado.")
@@ -445,42 +564,37 @@ def team(user: str) -> None:
 
     summary_rows = []
 
-    for person in users["name"].dropna().astype(str).tolist():
+    for _, person_row in users.dropna(subset=["name"]).iterrows():
+        person = str(person_row["name"])
         if activities.empty:
             person_activities = activities.copy()
         else:
             person_activities = activities[
-                activities["owners"].apply(
-                    lambda value: owner_matches(value, person)
-                )
+                activities["owners"].apply(lambda value: owner_matches(value, person))
             ].copy()
 
-        total = len(person_activities)
-        completed = len(
-            person_activities[person_activities["status"] == "Concluída"]
-        ) if total else 0
-        in_progress = len(
-            person_activities[person_activities["status"] == "Em andamento"]
-        ) if total else 0
-        pending = len(
-            person_activities[
-                ~person_activities["status"].isin(
-                    ["Concluída", "Cancelada", "Reprogramada"]
-                )
-            ]
-        ) if total else 0
-        progress_pct = round(completed / total * 100) if total else 0
-        previous = list_previous_pending(day, person)
+        if all_previous.empty:
+            person_previous = all_previous.copy()
+        else:
+            person_previous = all_previous[
+                all_previous["owners"].apply(lambda value: owner_matches(value, person))
+            ].copy()
+
+        completed = int(status_mask(person_activities, "Concluída").sum())
+        in_progress = int(status_mask(person_activities, "Em andamento").sum())
+        pending = int(status_mask(person_activities, "Pendente").sum())
+        actionable_total = pending + in_progress + completed
+        progress_pct = round(completed / actionable_total * 100) if actionable_total else 0
 
         summary_rows.append(
             {
                 "person": person,
-                "department": user_profile(person).get("department", ""),
-                "total": total,
+                "department": normalize_text(person_row.get("department")),
+                "total": len(person_activities),
                 "pending": pending,
                 "in_progress": in_progress,
                 "completed": completed,
-                "previous": len(previous),
+                "previous": len(person_previous),
                 "progress_pct": progress_pct,
             }
         )
@@ -491,19 +605,12 @@ def team(user: str) -> None:
     total_previous = sum(item["previous"] for item in summary_rows)
 
     c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        metric("Programadas", total_programmed, br(day), "#2563eb")
-    with c2:
-        metric("Pendentes", total_pending, "Equipe", "#f59e0b")
-    with c3:
-        metric("Pendências anteriores", total_previous, "Equipe", "#dc2626")
-    with c4:
-        metric("Concluídas", total_completed, "Equipe", "#16a34a")
+    with c1: metric("Programadas", total_programmed, br(day), "#2563eb")
+    with c2: metric("Pendentes", total_pending, "Equipe", "#f59e0b")
+    with c3: metric("Pendências anteriores", total_previous, "Equipe", "#dc2626")
+    with c4: metric("Concluídas", total_completed, "Equipe", "#16a34a")
 
-    st.markdown(
-        "<div class='panel'><div class='panel-title'>👥 Colaboradores</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div class='panel'><div class='panel-title'>👥 Colaboradores</div>", unsafe_allow_html=True)
 
     for item in summary_rows:
         with st.container(border=True):
@@ -515,14 +622,10 @@ def team(user: str) -> None:
 
             with center:
                 p1, p2, p3, p4 = st.columns(4)
-                with p1:
-                    st.metric("Programadas", item["total"])
-                with p2:
-                    st.metric("Pendentes", item["pending"])
-                with p3:
-                    st.metric("Em andamento", item["in_progress"])
-                with p4:
-                    st.metric("Concluídas", item["completed"])
+                with p1: st.metric("Programadas", item["total"])
+                with p2: st.metric("Pendentes", item["pending"])
+                with p3: st.metric("Em andamento", item["in_progress"])
+                with p4: st.metric("Concluídas", item["completed"])
 
                 st.progress(
                     min(max(item["progress_pct"], 0), 100) / 100,
@@ -530,9 +633,7 @@ def team(user: str) -> None:
                 )
 
                 if item["previous"] > 0:
-                    st.warning(
-                        f"{item['previous']} pendência(s) anterior(es)"
-                    )
+                    st.warning(f"{item['previous']} pendência(s) anterior(es)")
 
             with right:
                 if st.button(
@@ -541,11 +642,11 @@ def team(user: str) -> None:
                     use_container_width=True,
                 ):
                     st.session_state["team_selected_person"] = item["person"]
+                    st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
     selected_person = st.session_state.get("team_selected_person")
-
     if selected_person:
         st.markdown(
             f"<div class='panel'><div class='panel-title'>📋 Atividades de {selected_person}</div>",
@@ -556,9 +657,7 @@ def team(user: str) -> None:
             selected = activities.copy()
         else:
             selected = activities[
-                activities["owners"].apply(
-                    lambda value: owner_matches(value, selected_person)
-                )
+                activities["owners"].apply(lambda value: owner_matches(value, selected_person))
             ].copy()
 
         show_finished = st.toggle(
@@ -568,17 +667,9 @@ def team(user: str) -> None:
         )
 
         if not show_finished and not selected.empty:
-            selected = selected[
-                ~selected["status"].isin(
-                    ["Concluída", "Cancelada", "Reprogramada"]
-                )
-            ]
+            selected = selected[status_mask(selected, "Pendente", "Em andamento")]
 
-        activity_groups(
-            selected,
-            user,
-            f"team_{plain(selected_person)}",
-        )
+        activity_groups(selected, user, f"team_{plain(selected_person)}")
 
         if st.button("Fechar atividades", key="team_close_person"):
             st.session_state.pop("team_selected_person", None)
@@ -586,16 +677,16 @@ def team(user: str) -> None:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
+
 def coordination(user: str) -> None:
-    day = frame("Coordenação", "Pendências e entregas da equipe")
+    day = operational_frame("Coordenação", "Pendências e entregas da equipe")
     activities = list_activities(day)
     previous = list_previous_pending(day)
 
-    open_activities = activities[
-        ~activities["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
-    ] if not activities.empty else activities
-    progress = activities[activities["status"] == "Em andamento"] if not activities.empty else activities
-    completed = activities[activities["status"] == "Concluída"] if not activities.empty else activities
+    pending = activities[status_mask(activities, "Pendente")] if not activities.empty else activities
+    progress = activities[status_mask(activities, "Em andamento")] if not activities.empty else activities
+    completed = activities[status_mask(activities, "Concluída")] if not activities.empty else activities
+    open_activities = pd.concat([progress, pending]).drop_duplicates(subset=["id"]) if not activities.empty else activities
 
     c1, c2, c3, c4 = st.columns(4)
     with c1: metric("Abertas", len(open_activities), "Atividades do dia", "#f59e0b")
@@ -603,20 +694,23 @@ def coordination(user: str) -> None:
     with c3: metric("Pendências anteriores", len(previous), "Requer atenção", "#dc2626")
     with c4: metric("Concluídas", len(completed), br(day), "#16a34a")
 
-    st.markdown("<div class='panel'><div class='panel-title'>🔴 Pendências anteriores</div>", unsafe_allow_html=True)
-    activity_groups(previous, user, "coord_previous")
+    st.markdown("<div class='panel'><div class='panel-title'>📋 Atividades do dia</div>", unsafe_allow_html=True)
+    activity_groups(open_activities, user, "coord_today")
     st.markdown("</div>", unsafe_allow_html=True)
+
+    if not previous.empty:
+        st.markdown("<div class='panel'><div class='panel-title'>🔴 Pendências anteriores</div>", unsafe_allow_html=True)
+        activity_groups(previous, user, "coord_previous")
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def department_page(user: str, department: str) -> None:
-    day = frame(department, f"Atividades de {department}")
+    day = operational_frame(department, f"Atividades de {department}")
     activities = list_department_activities(day, department)
 
     show_completed = st.toggle("Exibir atividades finalizadas", value=False)
     if not show_completed and not activities.empty:
-        activities = activities[
-            ~activities["status"].isin(["Concluída", "Cancelada", "Reprogramada"])
-        ]
+        activities = activities[status_mask(activities, "Pendente", "Em andamento")]
 
     activity_groups(activities, user, f"department_{plain(department)}")
 
@@ -673,63 +767,23 @@ def render_routine_form(
         with a:
             title = st.text_input(
                 "Atividade",
-                value=(
-                    f"{values['title']} - Cópia"
-                    if duplicate_mode
-                    else values["title"]
-                ),
+                value=f"{values['title']} - Cópia" if duplicate_mode else values["title"],
             )
-            description = st.text_area(
-                "Descrição",
-                value=values["description"],
-            )
+            description = st.text_area("Descrição", value=values["description"])
 
-            default_department = (
-                departments.index(values["department"])
-                if values["department"] in departments
-                else 0
-            )
-            department = st.selectbox(
-                "Departamento",
-                departments,
-                index=default_department,
-            )
+            default_department = departments.index(values["department"]) if values["department"] in departments else 0
+            department = st.selectbox("Departamento", departments, index=default_department)
 
-            selected_owners = [
-                owner for owner in values["owners"] if owner in users
-            ]
-            owners = st.multiselect(
-                "Responsáveis",
-                users,
-                default=selected_owners,
-            )
+            selected_owners = [owner for owner in values["owners"] if owner in users]
+            owners = st.multiselect("Responsáveis", users, default=selected_owners)
 
-            default_project = (
-                projects.index(values["project"])
-                if values["project"] in projects
-                else 0
-            )
-            project = st.selectbox(
-                "Projeto",
-                projects,
-                index=default_project,
-            )
+            default_project = projects.index(values["project"]) if values["project"] in projects else 0
+            project = st.selectbox("Projeto", projects, index=default_project)
 
         with b:
-            frequencies = [
-                "Diária", "Semanal", "Quinzenal",
-                "Mensal", "Anual", "Única",
-            ]
-            default_frequency = (
-                frequencies.index(values["frequency"])
-                if values["frequency"] in frequencies
-                else 0
-            )
-            frequency = st.selectbox(
-                "Periodicidade",
-                frequencies,
-                index=default_frequency,
-            )
+            frequencies = ["Diária", "Semanal", "Quinzenal", "Mensal", "Anual", "Única"]
+            default_frequency = frequencies.index(values["frequency"]) if values["frequency"] in frequencies else 0
+            frequency = st.selectbox("Periodicidade", frequencies, index=default_frequency)
 
             help_text = {
                 "Diária": "Horário opcional, por exemplo: 17:30",
@@ -748,86 +802,64 @@ def render_routine_form(
             )
 
             priorities = ["Normal", "Alta", "Crítica", "Baixa"]
-            default_priority = (
-                priorities.index(values["priority"])
-                if values["priority"] in priorities
-                else 0
-            )
-            priority = st.selectbox(
-                "Prioridade",
-                priorities,
-                index=default_priority,
-            )
+            default_priority = priorities.index(values["priority"]) if values["priority"] in priorities else 0
+            priority = st.selectbox("Prioridade", priorities, index=default_priority)
 
-            mandatory = st.checkbox(
-                "Obrigatória",
-                value=values["mandatory"],
-            )
-            start_date = st.date_input(
-                "Data de início",
-                value=values["start_date"],
-            )
+            mandatory = st.checkbox("Obrigatória", value=values["mandatory"])
+            start_date = st.date_input("Data de início", value=values["start_date"], format="DD/MM/YYYY")
+            active = st.checkbox("Ativa", value=values["active"], disabled=not editing)
 
-            active = st.checkbox(
-                "Ativa",
-                value=values["active"],
-                disabled=not editing,
-            )
+        label = "Salvar alterações" if editing else "Criar rotina"
+        submitted = st.form_submit_button(label, type="primary", use_container_width=True)
 
-        label = (
-            "Salvar alterações"
-            if editing
-            else "Criar rotina"
-        )
-        submitted = st.form_submit_button(
-            label,
-            type="primary",
-            use_container_width=True,
-        )
+    if not submitted:
+        return
+    if not title.strip():
+        st.error("Informe o nome da atividade.")
+        return
+    if not owners:
+        st.error("Selecione pelo menos um responsável.")
+        return
 
-    if submitted:
-        if not title.strip():
-            st.error("Informe o nome da atividade.")
-            return
-        if not owners:
-            st.error("Selecione pelo menos um responsável.")
-            return
+    payload = {
+        "source_id": routine.get("source_id") if editing else f"manual-{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+        "title": title.strip(),
+        "description": description.strip(),
+        "department": department,
+        "owners": "/".join(owners),
+        "frequency": frequency,
+        "due_rule": due_rule.strip(),
+        "priority": priority,
+        "mandatory": mandatory,
+        "project": project,
+        "start_date": br(start_date),
+        "active": active if editing else 1,
+    }
 
-        payload = {
-            "source_id": (
-                routine.get("source_id")
-                if editing
-                else f"manual-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-            ),
-            "title": title.strip(),
-            "description": description.strip(),
-            "department": department,
-            "owners": "/".join(owners),
-            "frequency": frequency,
-            "due_rule": due_rule.strip(),
-            "priority": priority,
-            "mandatory": mandatory,
-            "project": project,
-            "start_date": br(start_date),
-            "active": active if editing else 1,
-        }
-
+    try:
+        create_snapshot()
         if editing:
             update_routine(int(routine["id"]), payload, user)
-            st.session_state.pop("edit_routine_id", None)
-            st.success("Rotina atualizada.")
+            message = "Rotina atualizada com sucesso."
         else:
-            create_snapshot()
             create_routine(payload, user)
-            st.success("Rotina cadastrada.")
+            message = "Cópia criada com sucesso." if duplicate_mode else "Rotina cadastrada com sucesso."
+    except Exception as exc:
+        st.error(f"Não foi possível salvar a rotina: {exc}")
+        return
 
-        st.rerun()
+    st.session_state.pop("edit_routine_id", None)
+    st.session_state.pop("duplicate_routine_id", None)
+    st.session_state.pop("show_new_routine", None)
+    st.session_state["routine_flash"] = ("success", message)
+    st.rerun()
 
 
 def routines_page(user: str) -> None:
-    day = frame("Rotinas", "Cadastro das atividades recorrentes")
+    frame("Rotinas", "Cadastro das atividades recorrentes")
 
-    users = list_users(True)["name"].dropna().astype(str).tolist()
+    users_frame = list_users(True)
+    users = users_frame["name"].dropna().astype(str).tolist() if not users_frame.empty else []
     departments = list_departments() or [
         "Contas a Receber",
         "Contas a Pagar",
@@ -836,70 +868,77 @@ def routines_page(user: str) -> None:
         "Tesouraria",
     ]
     projects_frame = list_projects(True)
-    projects = [""] + (
-        projects_frame["name"].dropna().astype(str).tolist()
-        if not projects_frame.empty
-        else []
-    )
+    projects = [""] + (projects_frame["name"].dropna().astype(str).tolist() if not projects_frame.empty else [])
 
     st.markdown("### Manutenção de rotinas")
 
-    if st.button(
-        "➕ Nova rotina",
-        type="primary",
-        use_container_width=False,
-    ):
+    if st.button("➕ Nova rotina", type="primary", use_container_width=False):
         st.session_state["show_new_routine"] = True
         st.session_state.pop("edit_routine_id", None)
+        st.session_state.pop("duplicate_routine_id", None)
         st.rerun()
 
-    st.caption(
-        "Cadastre, edite, duplique, desative ou reative atividades recorrentes."
-    )
+    st.caption("Cadastre, edite, duplique, desative ou reative atividades recorrentes.")
 
     if st.session_state.get("show_new_routine"):
-        with st.expander("➕ Nova rotina", expanded=True):
-            render_routine_form(
-                user,
-                users,
-                departments,
-                projects,
-                routine=None,
-                form_key="new_routine_form",
-            )
+        with st.container(border=True):
+            st.markdown("#### ➕ Nova rotina")
+            render_routine_form(user, users, departments, projects, routine=None, form_key="new_routine_form")
             if st.button("Fechar cadastro", key="close_new_routine"):
                 st.session_state.pop("show_new_routine", None)
                 st.rerun()
 
-    routines = list_routines(False)
+    edit_id = st.session_state.get("edit_routine_id")
+    if edit_id:
+        current_routine = get_routine(int(edit_id))
+        if current_routine:
+            with st.container(border=True):
+                st.markdown(f"#### ✏️ Editando: {normalize_text(current_routine.get('title'))}")
+                render_routine_form(
+                    user, users, departments, projects,
+                    routine=current_routine,
+                    form_key=f"edit_routine_form_{edit_id}",
+                )
+                if st.button("Cancelar edição", key="cancel_top_edit"):
+                    st.session_state.pop("edit_routine_id", None)
+                    st.rerun()
+        else:
+            st.session_state.pop("edit_routine_id", None)
 
+    duplicate_id = st.session_state.get("duplicate_routine_id")
+    if duplicate_id:
+        source_routine = get_routine(int(duplicate_id))
+        if source_routine:
+            with st.container(border=True):
+                st.markdown(f"#### 📄 Duplicando: {normalize_text(source_routine.get('title'))}")
+                st.caption("A cópia só será criada depois que você confirmar no formulário.")
+                render_routine_form(
+                    user, users, departments, projects,
+                    routine=source_routine,
+                    form_key=f"duplicate_routine_form_{duplicate_id}",
+                    duplicate_mode=True,
+                )
+                if st.button("Cancelar duplicação", key="cancel_duplicate"):
+                    st.session_state.pop("duplicate_routine_id", None)
+                    st.rerun()
+        else:
+            st.session_state.pop("duplicate_routine_id", None)
+
+    routines = list_routines(False)
     if routines.empty:
         st.info("Nenhuma rotina cadastrada.")
         return
 
     st.markdown("### 🔎 Localizar rotinas")
     f1, f2, f3, f4 = st.columns(4)
-
     with f1:
-        search = st.text_input(
-            "Pesquisar",
-            placeholder="Atividade, responsável ou projeto...",
-        )
+        search = st.text_input("Pesquisar", placeholder="Atividade, responsável ou projeto...")
     with f2:
-        department_filter = st.selectbox(
-            "Departamento",
-            ["Todos"] + departments,
-        )
+        department_filter = st.selectbox("Departamento", ["Todos"] + departments)
     with f3:
-        owner_filter = st.selectbox(
-            "Responsável",
-            ["Todos"] + users,
-        )
+        owner_filter = st.selectbox("Responsável", ["Todos"] + users)
     with f4:
-        status_filter = st.selectbox(
-            "Situação",
-            ["Ativas", "Inativas", "Todas"],
-        )
+        status_filter = st.selectbox("Situação", ["Ativas", "Inativas", "Todas"])
 
     f5, f6 = st.columns(2)
     with f5:
@@ -908,62 +947,37 @@ def routines_page(user: str) -> None:
             ["Todas", "Diária", "Semanal", "Quinzenal", "Mensal", "Anual", "Única"],
         )
     with f6:
-        project_filter = st.selectbox(
-            "Projeto",
-            ["Todos"] + [p for p in projects if p],
-        )
+        project_filter = st.selectbox("Projeto", ["Todos"] + [p for p in projects if p])
 
     filtered = routines.copy()
-
     if search.strip():
         needle = search.strip().casefold()
-        filtered = filtered[
-            filtered.apply(
-                lambda row: needle in " ".join(
-                    [
-                        normalize_text(row.get("title")),
-                        normalize_text(row.get("description")),
-                        normalize_text(row.get("owners")),
-                        normalize_text(row.get("project")),
-                    ]
-                ).casefold(),
-                axis=1,
-            )
-        ]
+        searchable = (
+            filtered["title"].fillna("").astype(str) + " "
+            + filtered["description"].fillna("").astype(str) + " "
+            + filtered["owners"].fillna("").astype(str) + " "
+            + filtered["project"].fillna("").astype(str)
+        ).str.casefold()
+        filtered = filtered[searchable.str.contains(re.escape(needle), regex=True, na=False)]
 
     if department_filter != "Todos":
-        filtered = filtered[
-            filtered["department"].astype(str) == department_filter
-        ]
-
+        filtered = filtered[filtered["department"].astype(str) == department_filter]
     if owner_filter != "Todos":
-        filtered = filtered[
-            filtered["owners"].apply(
-                lambda value: owner_matches(value, owner_filter)
-            )
-        ]
-
+        filtered = filtered[filtered["owners"].apply(lambda value: owner_matches(value, owner_filter))]
     if status_filter == "Ativas":
         filtered = filtered[filtered["active"] == 1]
     elif status_filter == "Inativas":
         filtered = filtered[filtered["active"] == 0]
-
     if frequency_filter != "Todas":
-        filtered = filtered[
-            filtered["frequency"].astype(str) == frequency_filter
-        ]
-
+        filtered = filtered[filtered["frequency"].astype(str) == frequency_filter]
     if project_filter != "Todos":
-        filtered = filtered[
-            filtered["project"].astype(str) == project_filter
-        ]
+        filtered = filtered[filtered["project"].astype(str) == project_filter]
 
     st.caption(f"{len(filtered)} rotina(s) encontrada(s).")
 
     for _, row in filtered.iterrows():
         routine_id = int(row["id"])
         active = bool(row.get("active", 1))
-        edit_open = st.session_state.get("edit_routine_id") == routine_id
 
         with st.container(border=True):
             left, actions = st.columns([4.8, 1.7])
@@ -971,11 +985,7 @@ def routines_page(user: str) -> None:
             with left:
                 status_label = "Ativa" if active else "Inativa"
                 status_class_name = "green" if active else "gray"
-
-                st.markdown(
-                    f"### 📋 {normalize_text(row.get('title'))}"
-                )
-
+                st.markdown(f"### 📋 {normalize_text(row.get('title'))}")
                 if normalize_text(row.get("description")):
                     st.caption(normalize_text(row.get("description")))
 
@@ -985,59 +995,35 @@ def routines_page(user: str) -> None:
                     f"<span class='tag green'>👤 {normalize_text(row.get('owners'))}</span>"
                     f"<span class='tag purple'>🔁 {normalize_text(row.get('frequency'))}</span>"
                 )
-
                 if normalize_text(row.get("due_rule")):
-                    tags += (
-                        f"<span class='tag yellow'>📅 "
-                        f"{normalize_text(row.get('due_rule'))}</span>"
-                    )
-
+                    tags += f"<span class='tag yellow'>📅 {normalize_text(row.get('due_rule'))}</span>"
                 if normalize_text(row.get("project")):
-                    tags += (
-                        f"<span class='tag purple'>📁 "
-                        f"{normalize_text(row.get('project'))}</span>"
-                    )
-
+                    tags += f"<span class='tag purple'>📁 {normalize_text(row.get('project'))}</span>"
                 st.markdown(tags, unsafe_allow_html=True)
 
             with actions:
-                if st.button(
-                    "✖️ Fechar edição" if edit_open else "✏️ Editar",
-                    key=f"edit_routine_{routine_id}",
-                    use_container_width=True,
-                ):
-                    if edit_open:
-                        st.session_state.pop("edit_routine_id", None)
-                    else:
-                        st.session_state["edit_routine_id"] = routine_id
-                        st.session_state.pop("show_new_routine", None)
-                    st.rerun()
-
-                if st.button(
-                    "📄 Duplicar",
-                    key=f"duplicate_routine_{routine_id}",
-                    use_container_width=True,
-                ):
-                    new_id = duplicate_routine(routine_id, user)
-                    st.session_state["edit_routine_id"] = new_id
+                if st.button("✏️ Editar", key=f"edit_routine_{routine_id}", use_container_width=True):
+                    st.session_state["edit_routine_id"] = routine_id
+                    st.session_state.pop("duplicate_routine_id", None)
                     st.session_state.pop("show_new_routine", None)
                     st.rerun()
 
-                toggle_label = (
-                    "⏸️ Desativar"
-                    if active
-                    else "▶️ Reativar"
-                )
-                if st.button(
-                    toggle_label,
-                    key=f"toggle_routine_{routine_id}",
-                    use_container_width=True,
-                ):
-                    set_routine_active(
-                        routine_id,
-                        not active,
-                        user,
-                    )
+                if st.button("📄 Duplicar", key=f"duplicate_routine_{routine_id}", use_container_width=True):
+                    st.session_state["duplicate_routine_id"] = routine_id
+                    st.session_state.pop("edit_routine_id", None)
+                    st.session_state.pop("show_new_routine", None)
+                    st.rerun()
+
+                toggle_label = "⏸️ Desativar" if active else "▶️ Reativar"
+                if st.button(toggle_label, key=f"toggle_routine_{routine_id}", use_container_width=True):
+                    try:
+                        create_snapshot()
+                        set_routine_active(routine_id, not active, user)
+                    except Exception as exc:
+                        st.session_state["routine_flash"] = ("error", f"Não foi possível alterar a rotina: {exc}")
+                    else:
+                        action = "desativada" if active else "reativada"
+                        st.session_state["routine_flash"] = ("success", f"Rotina {action} com sucesso.")
                     st.rerun()
 
                 if not active:
@@ -1052,41 +1038,20 @@ def routines_page(user: str) -> None:
                             disabled=not confirm,
                             use_container_width=True,
                         ):
-                            deleted = delete_routine_permanently(
-                                routine_id,
-                                user,
-                            )
-                            if deleted:
-                                st.success("Rotina excluída.")
-                                st.rerun()
+                            try:
+                                create_snapshot()
+                                deleted = delete_routine_permanently(routine_id, user)
+                            except Exception as exc:
+                                st.error(f"Não foi possível excluir a rotina: {exc}")
                             else:
-                                st.error(
-                                    "Esta rotina já possui registros diários "
-                                    "e não pode ser excluída. Mantenha-a desativada."
-                                )
-
-            if edit_open:
-                current_routine = get_routine(routine_id)
-                if current_routine:
-                    st.divider()
-                    st.markdown(
-                        f"#### ✏️ Editando: {normalize_text(current_routine.get('title'))}"
-                    )
-                    render_routine_form(
-                        user,
-                        users,
-                        departments,
-                        projects,
-                        routine=current_routine,
-                        form_key=f"edit_routine_form_{routine_id}",
-                    )
-
-                    if st.button(
-                        "Cancelar edição",
-                        key=f"cancel_inline_edit_{routine_id}",
-                    ):
-                        st.session_state.pop("edit_routine_id", None)
-                        st.rerun()
+                                if deleted:
+                                    st.session_state["routine_flash"] = ("success", "Rotina excluída com sucesso.")
+                                    st.rerun()
+                                else:
+                                    st.error(
+                                        "Esta rotina já possui registros diários e não pode ser excluída. "
+                                        "Mantenha-a desativada."
+                                    )
 
 
 def projects_page(user: str) -> None:
@@ -1397,6 +1362,20 @@ def backup_page(user: str) -> None:
 
 def main() -> None:
     user, page, departments = sidebar()
+
+    for flash_key in ("activity_flash", "routine_flash"):
+        flash = st.session_state.pop(flash_key, None)
+        if not flash:
+            continue
+        level, message = flash
+        if level == "success":
+            st.success(message)
+        elif level == "error":
+            st.error(message)
+        elif level == "warning":
+            st.warning(message)
+        else:
+            st.info(message)
 
     if page == "Meu Painel":
         home(user)

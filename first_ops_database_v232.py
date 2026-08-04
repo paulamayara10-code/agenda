@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -292,7 +291,6 @@ def list_departments() -> list[str]:
 def list_routines(active_only: bool = True) -> pd.DataFrame:
     where = "WHERE active=1" if active_only else ""
     return query(f"SELECT * FROM routines {where} ORDER BY department, owners, title, description")
-
 
 
 def get_routine(routine_id: int) -> dict | None:
@@ -826,7 +824,6 @@ def cancel_activity(activity_id: int, user: str, note: str) -> None:
     log_event(activity_id, int(row["routine_id"]), user, "Cancelada", note)
 
 
-
 def reset_pending_activities(
     cutoff_day: date,
     user_name: str,
@@ -966,7 +963,6 @@ def create_snapshot() -> Path:
     return path
 
 
-
 def list_backup_files() -> pd.DataFrame:
     rows = []
     for file in sorted(BACKUP_DIR.glob("*"), reverse=True):
@@ -1006,6 +1002,7 @@ def create_full_backup_package() -> Path:
     export_excel(excel_path)
     return snapshot
 
+
 def export_excel(path: Path) -> Path:
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         list_users(False).to_excel(writer, "Usuarios", index=False)
@@ -1014,3 +1011,6 @@ def export_excel(path: Path) -> Path:
         list_activities().to_excel(writer, "Registro_Diario", index=False)
         list_events().to_excel(writer, "Historico", index=False)
     return path
+
+
+init_db()

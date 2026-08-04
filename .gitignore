@@ -1,0 +1,19 @@
+# Banco criado pelo aplicativo
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Backups locais
+backups/
+
+# Python
+__pycache__/
+*.pyc
+
+# Configurações privadas
+.streamlit/secrets.toml
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
